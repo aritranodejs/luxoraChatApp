@@ -1,0 +1,319 @@
+body,
+html {
+    height: 100%;
+    margin: 0;
+    font-family: ui-rounded;
+    background: #f0f2f5;
+    color: #111b21;
+    overflow: hidden;
+    transition: background 0.3s, color 0.3s;
+}
+
+body.dark-mode {
+    background: #111b21;
+    color: white;
+}
+
+body.dark-mode .bg-light {
+    --bs-bg-opacity: 1;
+    background-color: #000 !important;
+}
+body.dark-mode .ReactModal__Content {
+    background: #202c33  !important;
+    color: white !important;
+}
+
+.app-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+.sidebar {
+    width: 30%;
+    background: #e1e6eb;
+    border-right: 1px solid #d1d7db;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease-in-out, background 0.3s, border-right 0.3s;
+}
+
+body.dark-mode .sidebar {
+    background: #202c33;
+    border-right: 1px solid #2a3942;
+}
+
+.sidebar h4 {
+    text-align: center;
+    margin-bottom: 15px;
+    color: #111b21;
+    transition: color 0.3s;
+}
+
+body.dark-mode .sidebar h4 {
+    color: white;
+}
+
+.friend-list {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.friend-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #d1d7db;
+    cursor: pointer;
+    transition: background 0.2s, border-bottom 0.3s;
+}
+
+body.dark-mode .friend-item {
+    border-bottom: 1px solid #2a3942;
+}
+
+.friend-item:hover {
+    background: #d1d7db;
+}
+
+body.dark-mode .friend-item:hover {
+    background: #2a3942;
+}
+
+body.dark-mode .bg-white {
+    --bs-bg-opacity: 1;
+    background-color: #202c33 !important;
+}
+
+.profile-avatar {
+    width: 45px;
+    height: 45px;
+    font-size: 1.2em;
+    font-weight: bold;
+    background: #00a884;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.profile-options {
+    position: relative;
+}
+
+.profile-dropdown-toggle {
+    cursor: pointer;
+}
+
+.profile-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    padding: 5px 0;
+    min-width: 120px;
+    z-index: 10;
+}
+
+.profile-dropdown-item {
+    padding: 8px 15px;
+    cursor: pointer;
+}
+
+.profile-dropdown-item:hover {
+    background: #f0f0f0;
+}
+
+body.dark-mode .profile-dropdown-menu {
+    background: #2a3942;
+    border: 1px solid #2a3942;
+    color: white;
+}
+
+body.dark-mode .profile-dropdown-item:hover {
+    background: #3a4952;
+}
+
+.friend-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #00a884;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.chat-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    transition: background 0.3s;
+}
+
+body.dark-mode .chat-container {
+    background: #0b141a;
+}
+
+.chat-header {
+    padding: 10px;
+    background: #e1e6eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.3s, border-bottom 0.3s;
+}
+
+body.dark-mode .chat-header {
+    background: #202c33;
+}
+
+.menu-button {
+    background: none;
+    border: none;
+    color: #111b21;
+    font-size: 24px;
+    cursor: pointer;
+    display: none;
+    transition: color 0.3s;
+}
+
+body.dark-mode .menu-button {
+    color: white;
+}
+
+.chat-body {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 15px;
+    background: url('https://www.transparenttextures.com/patterns/light-paper-fibers.png');
+    display: flex;
+    flex-direction: column;
+    transition: background 0.3s;
+}
+
+body.dark-mode .chat-body {
+    background: url('https://www.transparenttextures.com/patterns/black-linen.png');
+}
+
+.message {
+    max-width: 60%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    word-wrap: break-word;
+}
+
+.message.sent {
+    background: #00a884;
+    color: white;
+    align-self: flex-end;
+}
+
+.message.received {
+    background: #d1d7db;
+    color: #111b21;
+}
+
+body.dark-mode .message.received {
+    background: #2a3942;
+    color: white;
+}
+
+.chat-footer {
+    display: flex;
+    padding: 10px;
+    background: #e1e6eb;
+    border-top: 1px solid #d1d7db;
+    transition: background 0.3s, border-top 0.3s;
+}
+
+body.dark-mode .chat-footer {
+    background: #202c33;
+    border-top: 1px solid #2a3942;
+}
+
+.chat-footer input {
+    flex-grow: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 25px;
+    outline: none;
+    background: #d1d7db;
+    color: #111b21;
+    transition: background 0.3s, color 0.3s;
+}
+
+body.dark-mode .chat-footer input {
+    background: #2a3942;
+    color: white;
+}
+
+.chat-footer button {
+    margin-left: 10px;
+    background: #00a884;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 25px;
+    color: white;
+    cursor: pointer;
+}
+
+/* Mobile Responsiveness with Drawer */
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: row;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100vh;
+        width: 75%;
+        transform: translateX(-100%);
+        z-index: 10;
+        box-shadow: 2px 0px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    .chat-container {
+        width: 100%;
+    }
+
+    .menu-button {
+        background: none;
+        border: none;
+        color: #111b21;
+        font-size: 24px;
+        cursor: pointer;
+        display: none; /* Hidden by default */
+        transition: color 0.3s;
+    }
+
+    .chat-header .menu-button {
+        display: block; /* Show only when in mobile view */
+    }
+
+    /* Add border for mobile view when sidebar is closed */
+    .chat-container:not(.sidebar.open) .chat-header {
+        border-bottom: 1px solid #d1d7db;
+    }
+
+    body.dark-mode .chat-container:not(.sidebar.open) .chat-header {
+        border-bottom: 1px solid #2a3942;
+    }
+}
