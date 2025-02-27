@@ -6,6 +6,8 @@ Modal.setAppElement("#root");
 
 const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
   const users = [
+    // Chat With AI
+    { id: "AI-Copilot", name: "LuxaCopilot", isOnline: true, isFriend: true , isAI: true},
     { id: 1, name: "Alice", isOnline: true, isFriend: true },
     { id: 2, name: "Bob", isOnline: false, isFriend: true },
     { id: 3, name: "Charlie", isOnline: true, isFriend: false },
@@ -65,7 +67,7 @@ const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
             className="list-group-item d-flex align-items-center justify-content-between"
             onClick={() => onSelectChat()}
           >
-            <div
+            {user?.isAI ? <span className="ai-icon"></span> : ""}<div
               className="me-2 bg-secondary text-white rounded-circle d-flex justify-content-center align-items-center"
               style={{ width: "40px", height: "40px" }}
             >
@@ -82,7 +84,7 @@ const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
                 {user.isOnline ? (
                   <>
                     <span className="online-dot me-1"></span>
-                    <span className="text-success">Active now</span>
+                    <span className="text-success">{user.isAI ? "AI" : "Active now"}</span>
                   </>
                 ) : (
                   <span className="text-muted">Offline</span>

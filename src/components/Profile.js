@@ -1,8 +1,23 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 const Profile = ({ isDarkMode, toggleTheme }) => { // Receive props
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const { handleLogout } = useAuth(); 
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      await handleLogout(); 
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
 
   const toggleDropdown = () => {
     setDropdownOpen(!dropdownOpen);
@@ -40,7 +55,7 @@ const Profile = ({ isDarkMode, toggleTheme }) => { // Receive props
               {isDarkMode ? "Light Mode" : "Dark Mode"}
             </div>
             <div className="profile-dropdown-item">Settings</div>
-            <div className="profile-dropdown-item">Sign Out</div>
+            <div className="profile-dropdown-item" onClick={handleSubmit}>Sign Out</div>
           </div>
         )}
       </div>

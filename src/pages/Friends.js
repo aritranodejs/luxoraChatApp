@@ -4,6 +4,7 @@ import FriendsList from "../components/FriendsList";
 const Friends = ({ onSelectChat }) => {
   const [search, setSearch] = useState("");
   const friends = [
+    { id: "AI-Copilot", name: "LuxaCopilot", isOnline: true, isFriend: true, isAI: true },
     { id: 1, name: "Alice", isOnline: true, isFriend: true },
     { id: 2, name: "Bob", isOnline: false, isFriend: true },
   ];

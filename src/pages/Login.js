@@ -1,15 +1,44 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-const Login = () => {
+function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const { handleLogin, handleSendOtp } = useAuth();
+  const [errors, setErrors] = useState({});
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!email.trim()) {
+      newErrors.email = "Email is required";
+    } 
+
+    if (!password.trim()) {
+      newErrors.password = "Password is required";
+    } 
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Logged in with:", { email, password });
-    navigate("/friends");
+    if (!validateForm()) return; 
+
+    try {
+      await handleLogin(email, password);
+      await handleSendOtp();
+      navigate("/verify-otp");
+    } catch (error) {
+      console.log("Login failed:", error?.message);
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        server: error?.message || "An unexpected error occurred. Please try again.",
+      }));
+    }
   };
 
   return (
@@ -19,17 +48,40 @@ const Login = () => {
         <form onSubmit={handleSubmit}>
           <div className="mb-3">
             <label className="form-label">Email</label>
-            <input type="email" className="form-control" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input
+              type="email"
+              className={`form-control ${errors.email ? "is-invalid" : ""}`}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            {errors.email && <div className="invalid-feedback">{errors.email}</div>}
           </div>
+
           <div className="mb-3">
             <label className="form-label">Password</label>
-            <input type="password" className="form-control" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <input
+              type="password"
+              className={`form-control ${errors.password ? "is-invalid" : ""}`}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            {errors.password && <div className="invalid-feedback">{errors.password}</div>}
           </div>
-          <button type="submit" className="btn btn-primary w-100">Login</button>
+          <div className="mb-3">
+            {errors.server && <div className="invalid-feedback d-block">{errors.server}</div>}
+          </div>
+          <button type="submit" className="btn btn-primary w-100">
+            Login
+          </button>
+
+          <div className="text-center mt-3">
+            <p>Don't have an account? <a href="/register">Register</a></p>
+            <a href="/forgot-password">Forgot Password</a>
+          </div>
         </form>
       </div>
     </div>
   );
-};
+}
 
 export default Login;

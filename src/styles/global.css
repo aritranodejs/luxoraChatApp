@@ -13,6 +13,9 @@ body.dark-mode {
     background: #111b21;
     color: white;
 }
+body.dark-mode .app-title {
+    color: white !important;
+}
 
 body.dark-mode .bg-light {
     --bs-bg-opacity: 1;
