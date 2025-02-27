@@ -1,13 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 function Otp() {
   const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState({});
-  const { handleVerifyOtp } = useAuth();
+  const [timer, setTimer] = useState(30);
+  const [isResendDisabled, setIsResendDisabled] = useState(false); 
+  const { handleSendOtp, handleVerifyOtp } = useAuth();
   const navigate = useNavigate();
 
+  // Validate OTP function
   const validateOtp = () => {
     const newErrors = {};
 
@@ -19,6 +22,17 @@ function Otp() {
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleResendOtp = async () => {
+    if (isResendDisabled) return; 
+
+    try {
+      await handleSendOtp();
+      setIsResendDisabled(true);
+    } catch (error) {
+      console.error("OTP Resend failed:", error);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -37,6 +51,23 @@ function Otp() {
     }
   };
 
+  useEffect(() => {
+    let interval;
+    if (isResendDisabled) {
+      interval = setInterval(() => {
+        setTimer((prevTimer) => {
+          if (prevTimer === 1) {
+            clearInterval(interval);
+            setIsResendDisabled(false); 
+            return 30;
+          }
+          return prevTimer - 1;
+        });
+      }, 1000); 
+    }
+    return () => clearInterval(interval); 
+  }, [isResendDisabled]);
+
   return (
     <div className="container mt-5">
       <div className="card p-4 shadow-sm mx-auto" style={{ maxWidth: "400px" }}>
@@ -49,7 +80,6 @@ function Otp() {
               className={`form-control ${errors.otp ? "is-invalid" : ""}`}
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
-              required
             />
             {errors.otp && <div className="invalid-feedback">{errors.otp}</div>}
           </div>
@@ -57,8 +87,13 @@ function Otp() {
             {errors.server && <div className="invalid-feedback d-block">{errors.server}</div>}
           </div>
           <div className="mb-3">
-            <button type="button" className="btn btn-link p-0 text-decoration-none align-baseline">
-              Resend OTP
+            <button
+              type="button"
+              className="btn btn-link p-0 text-decoration-none align-baseline"
+              onClick={handleResendOtp}
+              disabled={isResendDisabled} 
+            >
+              {isResendDisabled ? `Resend OTP in ${timer}s` : "Resend OTP"}
             </button>
           </div>
           <div className="mb-3 text-center">
