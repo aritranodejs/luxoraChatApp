@@ -1,5 +1,3 @@
-// src/context/AuthContext.js
-
 import React, { createContext, useState, useContext } from "react";
 import { register, login, sendOtp, verifyOtp, me, logout } from "../services/authService"; // Import the login function
 import { setEmail, getEmail, removeEmail, setAuthToken, getAuthToken, removeAuthToken } from "../utils/authHelper";

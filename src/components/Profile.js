@@ -55,7 +55,7 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
       </div>
       <div className="profile-info flex-grow-1">
         <div className="profile-name">{user?.name || "User"}</div>
-        <div className="profile-status">{user?.isOnline === 1 ? "Active" : "Offline" || "Set a status"}</div>
+        <div className="profile-status text-success">{user?.isOnline === true ? "Active Now" : "Offline" || "Set a status"}</div>
       </div>
       <div className="profile-options" ref={dropdownRef}>
         <span className="profile-dropdown-toggle" onClick={toggleDropdown}>
