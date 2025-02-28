@@ -7,6 +7,7 @@ function Login() {
   const [password, setPassword] = useState("");
   const { handleLogin, handleSendOtp } = useAuth();
   const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);  
   const navigate = useNavigate();
 
   const validateForm = () => {
@@ -14,11 +15,11 @@ function Login() {
 
     if (!email.trim()) {
       newErrors.email = "Email is required";
-    } 
+    }
 
     if (!password.trim()) {
       newErrors.password = "Password is required";
-    } 
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -26,7 +27,9 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return; 
+    if (!validateForm()) return;
+
+    setLoading(true); 
 
     try {
       await handleLogin(email, password);
@@ -38,6 +41,8 @@ function Login() {
         ...prevErrors,
         server: error?.message || "An unexpected error occurred. Please try again.",
       }));
+    } finally {
+      setLoading(false); 
     }
   };
 
@@ -67,11 +72,20 @@ function Login() {
             />
             {errors.password && <div className="invalid-feedback">{errors.password}</div>}
           </div>
+
           <div className="mb-3">
             {errors.server && <div className="invalid-feedback d-block">{errors.server}</div>}
           </div>
-          <button type="submit" className="btn btn-primary w-100">
-            Login
+
+          <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+            {loading ? (
+              <span>
+                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                &nbsp;Logging In...
+              </span>
+            ) : (
+              "Login"
+            )}
           </button>
 
           <div className="text-center mt-3">

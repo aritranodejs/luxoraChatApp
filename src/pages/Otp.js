@@ -6,7 +6,8 @@ function Otp() {
   const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState({});
   const [timer, setTimer] = useState(30);
-  const [isResendDisabled, setIsResendDisabled] = useState(false); 
+  const [isResendDisabled, setIsResendDisabled] = useState(false);
+  const [loading, setLoading] = useState(false); 
   const { handleSendOtp, handleVerifyOtp } = useAuth();
   const navigate = useNavigate();
 
@@ -25,7 +26,7 @@ function Otp() {
   };
 
   const handleResendOtp = async () => {
-    if (isResendDisabled) return; 
+    if (isResendDisabled) return;
 
     try {
       await handleSendOtp();
@@ -37,7 +38,9 @@ function Otp() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateOtp()) return; 
+    if (!validateOtp()) return;
+
+    setLoading(true); 
 
     try {
       await handleVerifyOtp(otp);
@@ -48,6 +51,8 @@ function Otp() {
         ...prevErrors,
         server: error?.message || "An unexpected error occurred. Please try again.",
       }));
+    } finally {
+      setLoading(false); 
     }
   };
 
@@ -58,23 +63,26 @@ function Otp() {
         setTimer((prevTimer) => {
           if (prevTimer === 1) {
             clearInterval(interval);
-            setIsResendDisabled(false); 
+            setIsResendDisabled(false);
             return 30;
           }
           return prevTimer - 1;
         });
-      }, 1000); 
+      }, 1000);
     }
-    return () => clearInterval(interval); 
+    return () => clearInterval(interval);
   }, [isResendDisabled]);
 
   return (
     <div className="container mt-5">
       <div className="card p-4 shadow-sm mx-auto" style={{ maxWidth: "400px" }}>
         <h3 className="text-center">Verify OTP</h3>
+        <div className="mb-3 text-center">
+          <small className="text-muted">Two-factor authentication to secure your account</small>
+        </div>
         <form onSubmit={handleSubmit}>
           <div className="mb-3">
-            <label className="form-label">Enter 6 digit OTP</label>
+            <label className="form-label"><small>Enter the OTP sent to your email</small></label>
             <input
               type="text"
               className={`form-control ${errors.otp ? "is-invalid" : ""}`}
@@ -91,7 +99,7 @@ function Otp() {
               type="button"
               className="btn btn-link p-0 text-decoration-none align-baseline"
               onClick={handleResendOtp}
-              disabled={isResendDisabled} 
+              disabled={isResendDisabled}
             >
               {isResendDisabled ? `Resend OTP in ${timer}s` : "Resend OTP"}
             </button>
@@ -102,8 +110,15 @@ function Otp() {
           <div className="mb-3 text-center">
             <small>Didn't receive OTP? Check your spam folder</small>
           </div>
-          <button type="submit" className="btn btn-primary w-100">
-            Submit
+          <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+            {loading ? (
+              <span>
+                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                &nbsp;Verifying OTP...
+              </span>
+            ) : (
+              "Submit"
+            )}
           </button>
         </form>
       </div>
