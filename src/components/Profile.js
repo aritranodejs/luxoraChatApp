@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
-const Profile = ({ isDarkMode, toggleTheme }) => { // Receive props
+const Profile = ({ isDarkMode, toggleTheme }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [user, setUser] = useState(null); 
   const dropdownRef = useRef(null);
-  const { handleLogout } = useAuth(); 
+  const { handleMe, handleLogout } = useAuth(); 
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleSignOut = async (e) => {
     e.preventDefault();
 
     try {
@@ -30,20 +31,31 @@ const Profile = ({ isDarkMode, toggleTheme }) => { // Receive props
   };
 
   useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const userData = await handleMe();
+        setUser(userData?.data);
+      } catch (error) {
+        console.error("Failed to fetch user data:", error);
+      }
+    };
+
+    fetchUserData();
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [handleMe]);
 
   return (
     <div className="profile-container d-flex align-items-center mb-3 p-2">
       <div className="profile-avatar bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-2">
-        AD
+        {user?.name ? user.name[0] : "U"}
       </div>
       <div className="profile-info flex-grow-1">
-        <div className="profile-name">Aritra Dutta</div>
-        <div className="profile-status">Set a status</div>
+        <div className="profile-name">{user?.name || "User"}</div>
+        <div className="profile-status">{user?.isOnline === 1 ? "Active" : "Offline" || "Set a status"}</div>
       </div>
       <div className="profile-options" ref={dropdownRef}>
         <span className="profile-dropdown-toggle" onClick={toggleDropdown}>
@@ -55,7 +67,7 @@ const Profile = ({ isDarkMode, toggleTheme }) => { // Receive props
               {isDarkMode ? "Light Mode" : "Dark Mode"}
             </div>
             <div className="profile-dropdown-item">Settings</div>
-            <div className="profile-dropdown-item" onClick={handleSubmit}>Sign Out</div>
+            <div className="profile-dropdown-item" onClick={handleSignOut}>Sign Out</div>
           </div>
         )}
       </div>

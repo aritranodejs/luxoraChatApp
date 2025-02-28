@@ -77,7 +77,7 @@ export async function me() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || "Failed");
+            throw data;
         }
 
         return data;
@@ -96,7 +96,7 @@ export async function logout() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || "Logout failed");
+            throw data;
         }
 
         return data;

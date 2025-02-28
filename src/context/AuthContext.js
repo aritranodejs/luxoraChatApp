@@ -1,13 +1,12 @@
 // src/context/AuthContext.js
 
 import React, { createContext, useState, useContext } from "react";
-import { register, login, sendOtp, verifyOtp, logout } from "../services/authService"; // Import the login function
+import { register, login, sendOtp, verifyOtp, me, logout } from "../services/authService"; // Import the login function
 import { setEmail, getEmail, removeEmail, setAuthToken, getAuthToken, removeAuthToken } from "../utils/authHelper";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(!!getAuthToken());
 
   const handleRegister = async (name, email, password) => {
@@ -44,7 +43,6 @@ export const AuthProvider = ({ children }) => {
       const data = await verifyOtp(email, otp);
       console.log("OTP Verified:", data);
 
-      setUser(data?.data);
       setIsLoggedIn(true);
       setAuthToken(data?.data?.authToken);
     } catch (error) {
@@ -53,11 +51,20 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const handleMe = async () => {
+    try {
+      const data = await me();
+      return data;
+    } catch (error) {
+      console.error("Me error:", error);
+      throw error; // Re-throw the error
+    }
+  }
+
   const handleLogout = async () => {
     try {
       const data = await logout();
       console.log("Logged out:", data);
-      setUser(null);
       setIsLoggedIn(false);
       removeAuthToken();
       removeEmail();
@@ -68,12 +75,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const value = {
-    user,
     isLoggedIn,
     handleRegister,
     handleLogin,
     handleSendOtp,
     handleVerifyOtp,
+    handleMe,
     handleLogout
   };
 
