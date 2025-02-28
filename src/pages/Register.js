@@ -74,6 +74,10 @@ const Register = () => {
     }
   };
 
+  const handleKeyUp = (e) => {
+    validateForm();
+  };
+
   return (
     <div className="container mt-5">
       <div className="card p-4 shadow-sm mx-auto" style={{ maxWidth: "400px" }}>
@@ -86,6 +90,7 @@ const Register = () => {
               className={`form-control ${errors.name ? "is-invalid" : ""}`}
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onKeyUp={handleKeyUp}
             />
             {errors.name && <div className="invalid-feedback">{errors.name}</div>}
           </div>
@@ -97,6 +102,7 @@ const Register = () => {
               className={`form-control ${errors.email ? "is-invalid" : ""}`}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onKeyUp={handleKeyUp}
             />
             {errors.email && <div className="invalid-feedback">{errors.email}</div>}
           </div>
@@ -108,6 +114,7 @@ const Register = () => {
               className={`form-control ${errors.password ? "is-invalid" : ""}`}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyUp={handleKeyUp}
             />
             {errors.password && <div className="invalid-feedback">{errors.password}</div>}
           </div>
@@ -119,6 +126,7 @@ const Register = () => {
               className={`form-control ${errors.confirmPassword ? "is-invalid" : ""}`}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyUp={handleKeyUp}
             />
             {errors.confirmPassword && <div className="invalid-feedback">{errors.confirmPassword}</div>}
           </div>

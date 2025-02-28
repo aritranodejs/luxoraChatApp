@@ -46,6 +46,16 @@ function Login() {
     }
   };
 
+  const handleEmailChange = (e) => {
+    setEmail(e.target.value);
+    validateForm(); 
+  };
+
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+    validateForm(); 
+  };
+
   return (
     <div className="container mt-5">
       <div className="card p-4 shadow-sm mx-auto" style={{ maxWidth: "400px" }}>
@@ -57,7 +67,8 @@ function Login() {
               type="email"
               className={`form-control ${errors.email ? "is-invalid" : ""}`}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange} 
+              onKeyUp={validateForm} 
             />
             {errors.email && <div className="invalid-feedback">{errors.email}</div>}
           </div>
@@ -68,7 +79,8 @@ function Login() {
               type="password"
               className={`form-control ${errors.password ? "is-invalid" : ""}`}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={handlePasswordChange} 
+              onKeyUp={validateForm} 
             />
             {errors.password && <div className="invalid-feedback">{errors.password}</div>}
           </div>

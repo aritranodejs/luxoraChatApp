@@ -11,7 +11,6 @@ function Otp() {
   const { handleSendOtp, handleVerifyOtp } = useAuth();
   const navigate = useNavigate();
 
-  // Validate OTP function
   const validateOtp = () => {
     const newErrors = {};
 
@@ -56,6 +55,11 @@ function Otp() {
     }
   };
 
+  const handleOtpChange = (e) => {
+    setOtp(e.target.value);
+    validateOtp();
+  };
+
   useEffect(() => {
     let interval;
     if (isResendDisabled) {
@@ -87,7 +91,8 @@ function Otp() {
               type="text"
               className={`form-control ${errors.otp ? "is-invalid" : ""}`}
               value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              onChange={handleOtpChange}
+              onKeyUp={validateOtp}
             />
             {errors.otp && <div className="invalid-feedback">{errors.otp}</div>}
           </div>
