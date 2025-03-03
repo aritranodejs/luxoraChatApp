@@ -1,33 +1,48 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Modal from "react-modal";
+import { globalUsers, friends, addFriend } from "../services/friendService";
 
 Modal.setAppElement("#root");
 
-const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
-  const users = [
-    // Chat With AI
-    { id: "AI-Copilot", name: "LuxaCopilot", isOnline: true, isFriend: true , isAI: true},
-    { id: 1, name: "Alice", isOnline: true, isFriend: true },
-    { id: 2, name: "Bob", isOnline: false, isFriend: true },
-    { id: 3, name: "Charlie", isOnline: true, isFriend: false },
-    { id: 4, name: "David", isOnline: false, isFriend: false },
-  ];
-
+const FriendsList = ({ searchQuery, onAddFriend, onSelectChat }) => {
+  const [users, setUsers] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        let globalUsersData = await globalUsers();
+        globalUsersData = globalUsersData?.data;
+
+        let friendsData = await friends();
+        friendsData = friendsData?.data?.friends;
+
+        // Mark users as friends
+        const updatedUsers = globalUsersData.map(user => ({
+          ...user,
+          isFriend: friendsData.some(friend => friend.id === user.id),
+        }));
+
+        setUsers([ ...updatedUsers]);
+        setFriendsList(friendsData);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      }
+    };
+
+    fetchUsers();
+  }, []);
 
   const filteredUsers = users.filter((user) => {
     const searchLower = searchQuery.toLowerCase();
     const userNameLower = user.name.toLowerCase();
     const matchesSearch = userNameLower.includes(searchLower);
-    const isFriend = friends.some((friend) => friend.id === user.id);
+    const isFriend = friendsList.some((friend) => friend.id === user.id);
 
-    if (searchQuery.trim() === "") {
-      return isFriend;
-    } else {
-      return matchesSearch;
-    }
+    return searchQuery.trim() === "" ? isFriend : matchesSearch;
   });
 
   const openModal = (user) => {
@@ -67,19 +82,20 @@ const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
             className="list-group-item d-flex align-items-center justify-content-between"
             onClick={() => onSelectChat()}
           >
-            {user?.isAI ? <span className="ai-icon"></span> : ""}<div
+            {user.isAI && <span className="ai-icon"></span>}
+            <div
               className="me-2 bg-secondary text-white rounded-circle d-flex justify-content-center align-items-center"
               style={{ width: "40px", height: "40px" }}
             >
               {user.name.charAt(0)}
             </div>
             <Link
-              to={`/chat/${user.id}`}
+              to={`/chat/${user?.slug}`}
               className="text-decoration-none flex-grow-1 text-dark"
             >
               {user.name}
             </Link>
-            {friends.some((friend) => friend.id === user.id) ? (
+            {user.isFriend ? (
               <span className="d-flex align-items-center">
                 {user.isOnline ? (
                   <>
@@ -91,7 +107,7 @@ const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
                 )}
               </span>
             ) : (
-              searchQuery.trim() !== "" && (
+              searchQuery.trim() !== "" && !user.isAI && (
                 <button
                   className="btn btn-success btn-sm"
                   onClick={() => openModal(user)}
@@ -104,6 +120,7 @@ const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
         ))}
       </ul>
 
+      {/* Add Friend Modal */}
       <Modal
         isOpen={modalIsOpen}
         onRequestClose={closeModal}
@@ -113,12 +130,12 @@ const FriendsList = ({ searchQuery, friends, onAddFriend, onSelectChat }) => {
         {selectedUser && (
           <div className="modal-content">
             <h5 className="mb-3">Add Friend</h5>
-            <p className="mb-3">Do you want to add {selectedUser.name} as a friend?</p>
+            <p className="mb-3">Do you want to add {selectedUser?.name} as a friend?</p>
             <div className="d-flex justify-content-end">
               <button
                 className="btn btn-success btn-sm me-2"
                 onClick={() => {
-                  onAddFriend(selectedUser);
+                  onAddFriend(selectedUser?.id);
                   closeModal();
                 }}
               >

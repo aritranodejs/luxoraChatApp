@@ -1,4 +1,5 @@
 import { getResponse } from "../utils/responseHelper";
+import { getAuthToken } from "../utils/authHelper";
 
 export async function register(name, email, password) {
     try {
@@ -72,7 +73,7 @@ export async function me() {
     try {
         const response = await getResponse("auth/me", "GET", null, {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("authToken")}`,
+            "Authorization": `Bearer ${getAuthToken()}`,
         });
         const data = await response.json();
 
@@ -91,7 +92,7 @@ export async function logout() {
     try {
         const response = await getResponse("auth/logout", "DELETE", null, {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("authToken")}`,
+            "Authorization": `Bearer ${getAuthToken()}`,
         });
         const data = await response.json();
 

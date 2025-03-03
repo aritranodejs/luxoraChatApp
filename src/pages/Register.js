@@ -145,7 +145,7 @@ const Register = () => {
           </button>
 
           <div className="text-center mt-3">
-            <p>Already have an account? <a href="/login">Login</a></p>
+            <p>Already have an account? <a className="text-decoration-none" href="/login">Login</a></p>
           </div>
         </form>
       </div>

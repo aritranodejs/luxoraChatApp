@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext } from "react";
 import { register, login, sendOtp, verifyOtp, me, logout } from "../services/authService"; // Import the login function
-import { setEmail, getEmail, removeEmail, setAuthToken, getAuthToken, removeAuthToken } from "../utils/authHelper";
+import { setEmail, getEmail, removeEmail, setAuthToken, getAuthToken, removeAuthToken, setUser, removeUser } from "../utils/authHelper";
 
 const AuthContext = createContext();
 
@@ -43,6 +43,7 @@ export const AuthProvider = ({ children }) => {
 
       setIsLoggedIn(true);
       setAuthToken(data?.data?.authToken);
+      setUser(data?.data);
     } catch (error) {
       console.error("Send OTP error:", error);
       throw error; // Re-throw the error
@@ -66,6 +67,7 @@ export const AuthProvider = ({ children }) => {
       setIsLoggedIn(false);
       removeAuthToken();
       removeEmail();
+      removeUser();
     } catch (error) {
       console.error("Logout error:", error);
       throw error; // Re-throw the error
