@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Modal from "react-modal";
 import { globalUsers, friends, getPendingRequests, addFriend, cancelRequest } from "../services/friendService";
 import Swal from "sweetalert2";
+import { getUser } from "../utils/authHelper";
 
 Modal.setAppElement("#root");
 
@@ -91,8 +92,6 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
         ...friend.friendInfo,
       }));
   
-      console.log("Extracted Friends List:", extractedFriendsList);
-  
       const updatedUsers = globalUsersData.map((user) => {
         const matchedFriend = extractedFriendsList.find(
           (friend) => friend.senderId === user.id || friend.receiverId === user.id
@@ -115,14 +114,12 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
         };
       });      
   
-      console.log("Updated Users:", updatedUsers);
-  
       setUsers(updatedUsers);
       setFriendsList(extractedFriendsList);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
-  };  
+  };   
 
   useEffect(() => {
     fetchUsersAndFriends();
@@ -133,8 +130,13 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
     const userNameLower = user.name.toLowerCase();
     const matchesSearch = userNameLower.includes(searchLower);
     const isFriend = friendsList.some((friend) => friend.id === user.id);
-
-    return searchQuery.trim() === "" ? isFriend : matchesSearch;
+  
+    const currentUserId = getUser().id;
+    const isSenderRequest = user.hasPendingRequest && user.id === currentUserId;
+  
+    return searchQuery.trim() === "" 
+      ? isFriend 
+      : matchesSearch && !isSenderRequest; // Exclude if you have sent a request
   });
 
   const openModal = (user) => {

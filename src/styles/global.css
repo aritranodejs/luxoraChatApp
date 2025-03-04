@@ -92,6 +92,15 @@ body.dark-mode .bg-white {
     background-color: #202c33 !important;
 }
 
+body.dark-mode .modal-header { 
+    background: #202c33 !important;
+    color: white !important;
+}
+
+body.dark-mode .no-friend-requests {
+    color: #000 !important;
+}
+
 .profile-notifications {
     position: relative;
     display: flex;

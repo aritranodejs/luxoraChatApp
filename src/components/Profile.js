@@ -3,18 +3,22 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "react-bootstrap";
 import { getFriendRequests, acceptOrRejectRequest } from "../services/friendService";
+import { updateUserOnlineStatus } from "../services/userService";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import Swal from "sweetalert2";
+import io from 'socket.io-client';
+import debounce from 'lodash/debounce';
 
 const Profile = ({ isDarkMode, toggleTheme }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [user, setUser] = useState(null);
-  const [notifications, setNotifications] = useState(1);
+  const [notifications, setNotifications] = useState(0);
   const [friendRequests, setFriendRequests] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const dropdownRef = useRef(null);
   const { handleMe, handleLogout } = useAuth();
   const navigate = useNavigate();
+  const socket = useRef(null);
 
   const handleSignOut = async (e) => {
     e.preventDefault();
@@ -35,22 +39,7 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
 
   const handleNotificationClick = async () => {
     try {
-        const response = await getFriendRequests();
-        console.log("Friend Requests:", response?.data?.friendRequests);
-
-        const formattedRequests = response?.data?.friendRequests.map((request) => ({
-            requestId: request.id, 
-            senderId: request.senderId,
-            receiverId: request.receiverId,
-            status: request.status,
-            ...request.friendInfo, 
-        })) || [];
-
-        console.log("Formatted Friend Requests:", formattedRequests);
-
-        setFriendRequests(formattedRequests);
         setModalOpen(true);
-        setNotifications(0); 
     } catch (error) {
         console.error("Failed to fetch friend requests:", error);
     }
@@ -59,8 +48,7 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
   const handleAcceptOrRejectRequest = async (friendId, status) => {
     try {
         const response = await acceptOrRejectRequest(friendId, status);
-        console.log("Accept/Reject Response:", response);
-        
+        setNotifications((prev) => prev - 1);
         Swal.fire({
             icon: "success",
             title: "Success",
@@ -75,10 +63,84 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
   };
 
   useEffect(() => {
+    let socketInitialized = false;
+    const url = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
+
     const fetchUserData = async () => {
       try {
         const userData = await handleMe();
         setUser(userData?.data);
+
+        const response = await getFriendRequests();
+        let formattedRequests = response?.data?.friendRequests.map((request) => ({
+            requestId: request.id, 
+            senderId: request.senderId,
+            receiverId: request.receiverId,
+            status: request.status,
+            ...request.friendInfo, 
+        })) || [];
+
+        setFriendRequests(formattedRequests);
+        setNotifications(formattedRequests.length);
+
+        // Initialize socket connection after user data is fetched
+        if (userData?.data?.id) {
+          socket.current = io(url); 
+          console.log("Socket connected", socket.current);
+          socket.current.emit('userId', userData.data.id);
+
+          // Update online status on connection
+          updateUserOnlineStatus(userData.data.id, true);
+
+          socket.current.on('friendRequests', (data) => {
+            console.log("Friend requests:", data);
+            formattedRequests = data?.friendRequests.map((request) => ({
+              requestId: request.id, 
+              senderId: request.senderId,
+              receiverId: request.receiverId,
+              status: request.status,
+              ...request.friendInfo, 
+            })) || [];
+
+            setFriendRequests(formattedRequests);
+            setNotifications(data.count);
+          });
+
+          const debouncedUpdate = debounce(updateUserOnlineStatus, 500); // Debounce for 500ms
+          const handleVisibilityChange = () => {
+            if (document.hidden) {
+              if (socket.current && socket.current.connected) {
+                debouncedUpdate(userData?.data?.id, false);
+              }
+            } else {
+              if (socket.current && socket.current.connected) {
+                debouncedUpdate(userData?.data?.id, true);
+              }
+            }
+          };
+          
+          const handleBeforeUnload = (event) => {
+            if (socket.current && socket.current.connected) {
+              updateUserOnlineStatus(userData?.data?.id, false); // User closed browser
+            }
+          };
+
+          // Only add event listeners once
+          if (!socketInitialized) {
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            window.addEventListener('beforeunload', handleBeforeUnload);
+            socketInitialized = true; // Set the flag to true
+          }
+
+          return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            if (socket.current) {
+              socket.current.disconnect(); // Disconnect socket on unmount
+            }
+            socketInitialized = false; // Reset the flag on unmount
+          };
+        }
       } catch (error) {
         console.error("Failed to fetch user data:", error);
       }
@@ -86,7 +148,9 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
 
     fetchUserData();
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [handleMe]);
 
   return (
@@ -132,7 +196,7 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
         </Modal.Header>
         <Modal.Body>
           {friendRequests.length === 0 ? (
-            <p className="text-center">No new friend requests.</p>
+            <p className="text-center no-friend-requests">No new friend requests.</p>
           ) : (
             <ul className="list-group">
               {friendRequests.map((request) => (
