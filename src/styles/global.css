@@ -13,6 +13,7 @@ body.dark-mode {
     background: #111b21;
     color: white;
 }
+
 body.dark-mode .app-title {
     color: white !important;
 }
@@ -21,8 +22,9 @@ body.dark-mode .bg-light {
     --bs-bg-opacity: 1;
     background-color: #000 !important;
 }
+
 body.dark-mode .ReactModal__Content {
-    background: #202c33  !important;
+    background: #202c33 !important;
     color: white !important;
 }
 
@@ -88,6 +90,33 @@ body.dark-mode .friend-item:hover {
 body.dark-mode .bg-white {
     --bs-bg-opacity: 1;
     background-color: #202c33 !important;
+}
+
+.profile-notifications {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.profile-notifications button {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+.notification-badge {
+    font-size: 12px;
+    width: 18px;
+    height: 18px;
+    text-align: center;
+    line-height: 18px;
+    background-color: red;
+    color: white;
+    border-radius: 50%;
+    position: absolute;
+    top: -5px;
+    right: -5px;
 }
 
 .profile-avatar {
@@ -303,12 +332,14 @@ body.dark-mode .chat-footer input {
         color: #111b21;
         font-size: 24px;
         cursor: pointer;
-        display: none; /* Hidden by default */
+        display: none;
+        /* Hidden by default */
         transition: color 0.3s;
     }
 
     .chat-header .menu-button {
-        display: block; /* Show only when in mobile view */
+        display: block;
+        /* Show only when in mobile view */
     }
 
     /* Add border for mobile view when sidebar is closed */

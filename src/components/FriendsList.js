@@ -1,39 +1,131 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Modal from "react-modal";
-import { globalUsers, friends, addFriend } from "../services/friendService";
+import { globalUsers, friends, getPendingRequests, addFriend, cancelRequest } from "../services/friendService";
+import Swal from "sweetalert2";
 
 Modal.setAppElement("#root");
 
-const FriendsList = ({ searchQuery, onAddFriend, onSelectChat }) => {
+const FriendsList = ({ searchQuery, onSelectChat }) => {
   const [users, setUsers] = useState([]);
   const [friendsList, setFriendsList] = useState([]);
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        let globalUsersData = await globalUsers();
-        globalUsersData = globalUsersData?.data;
+  const handleAddFriend = async (receiverId) => {
+    try {
+      const response = await addFriend(receiverId);
+      fetchUsersAndFriends();
+      Swal.fire({
+        icon: "success",
+        title: "Success",
+        text: response?.message || "Friend request sent successfully!",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } catch (error) {
+      console.error("Error adding friend:", error);
+    }
+  }
 
-        let friendsData = await friends();
-        friendsData = friendsData?.data?.friends;
+  const handleCancelRequest = async (friendId) => {
+    if (!friendId) {
+      Swal.fire({
+        icon: "error",
+        title: "Oops...",
+        text: "Friend ID is missing!",
+      });
+      return;
+    }
 
-        // Mark users as friends
-        const updatedUsers = globalUsersData.map(user => ({
-          ...user,
-          isFriend: friendsData.some(friend => friend.id === user.id),
-        }));
+    try {
+      const result = await Swal.fire({
+        title: "Are you sure?",
+        text: "Do you really want to cancel the friend request?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#d33",
+        cancelButtonColor: "#3085d6",
+        confirmButtonText: "Yes, cancel it!",
+      });
 
-        setUsers([ ...updatedUsers]);
-        setFriendsList(friendsData);
-      } catch (error) {
-        console.error("Error fetching users:", error);
+      if (result.isConfirmed) {
+        const response = await cancelRequest(friendId); 
+        const message = response.message || "Your friend request has been canceled.";
+
+        Swal.fire({
+          title: "Cancelled!",
+          text: message, 
+          icon: "success",
+          timer: 2000,
+          showConfirmButton: false,
+        });
+
+        fetchUsersAndFriends(); 
       }
-    };
+    } catch (error) {
+      Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: error.response?.data?.message || "Failed to cancel the friend request. Please try again.",
+      });
+      console.error("Error canceling request:", error);
+    }
+  };  
 
-    fetchUsers();
+  const fetchUsersAndFriends = async () => {
+    try {
+      let globalUsersData = await globalUsers();
+      globalUsersData = globalUsersData?.data || [];
+  
+      let friendsData = await friends();
+      friendsData = friendsData?.data?.friends || [];
+  
+      let pendingRequests = await getPendingRequests();
+      pendingRequests = pendingRequests?.data?.friends || [];
+  
+      let extractedFriendsList = friendsData.map((friend) => ({
+        friendId: friend?.id,
+        senderId: friend?.senderId,
+        receiverId: friend?.receiverId,
+        ...friend.friendInfo,
+      }));
+  
+      console.log("Extracted Friends List:", extractedFriendsList);
+  
+      const updatedUsers = globalUsersData.map((user) => {
+        const matchedFriend = extractedFriendsList.find(
+          (friend) => friend.senderId === user.id || friend.receiverId === user.id
+        );
+      
+        const matchedPendingRequest = pendingRequests.find(
+          (request) => request.senderId === user.id || request.receiverId === user.id
+        );
+      
+        return {
+          friendId: matchedFriend 
+            ? matchedFriend.friendId  
+            : matchedPendingRequest
+            ? matchedPendingRequest.id  
+            : null,  
+      
+          ...user,
+          isFriend: friendsData.some((friend) => friend?.friendInfo?.id === user.id),
+          hasPendingRequest: pendingRequests.some((request) => request?.receiverId === user.id),
+        };
+      });      
+  
+      console.log("Updated Users:", updatedUsers);
+  
+      setUsers(updatedUsers);
+      setFriendsList(extractedFriendsList);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };  
+
+  useEffect(() => {
+    fetchUsersAndFriends();
   }, []);
 
   const filteredUsers = users.filter((user) => {
@@ -107,14 +199,23 @@ const FriendsList = ({ searchQuery, onAddFriend, onSelectChat }) => {
                 )}
               </span>
             ) : (
-              searchQuery.trim() !== "" && !user.isAI && (
-                <button
-                  className="btn btn-success btn-sm"
-                  onClick={() => openModal(user)}
-                >
-                  Add Friend
-                </button>
-              )
+              !user.isFriend && searchQuery.trim() !== "" && !user.isAI && (
+                user.hasPendingRequest ? (
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => handleCancelRequest(user?.friendId)} 
+                  >
+                    Cancel
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-success btn-sm"
+                    onClick={() => openModal(user)}
+                  >
+                    Add
+                  </button>
+                )
+              )             
             )}
           </li>
         ))}
@@ -135,7 +236,7 @@ const FriendsList = ({ searchQuery, onAddFriend, onSelectChat }) => {
               <button
                 className="btn btn-success btn-sm me-2"
                 onClick={() => {
-                  onAddFriend(selectedUser?.id);
+                  handleAddFriend(selectedUser?.id);
                   closeModal();
                 }}
               >
