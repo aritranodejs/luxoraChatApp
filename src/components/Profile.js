@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { getUser } from "../utils/authHelper";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "react-bootstrap";
 import { getFriendRequests, acceptOrRejectRequest } from "../services/friendService";
@@ -7,7 +8,6 @@ import { updateUserOnlineStatus } from "../services/userService";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import Swal from "sweetalert2";
 import io from 'socket.io-client';
-import debounce from 'lodash/debounce';
 
 const Profile = ({ isDarkMode, toggleTheme }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -15,10 +15,12 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
   const [notifications, setNotifications] = useState(0);
   const [friendRequests, setFriendRequests] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [status, setStatus] = useState(false);
   const dropdownRef = useRef(null);
   const { handleMe, handleLogout } = useAuth();
   const navigate = useNavigate();
   const socket = useRef(null);
+  const url = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
 
   const handleSignOut = async (e) => {
     e.preventDefault();
@@ -64,10 +66,18 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
 
   useEffect(() => {
     let socketInitialized = false;
-    const url = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
 
     const fetchUserData = async () => {
       try {
+        socket.current = io(url); // Initialize socket connection
+        const userId = getUser()?.id;
+        socket.current.emit('userId', userId);
+
+        // Listen for online status updates
+        socket.current.on('online-status', (data) => {
+          setStatus(data?.isOnline);
+        }); 
+
         const userData = await handleMe();
         setUser(userData?.data);
 
@@ -85,15 +95,11 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
 
         // Initialize socket connection after user data is fetched
         if (userData?.data?.id) {
-          socket.current = io(url); 
-          console.log("Socket connected", socket.current);
-          socket.current.emit('userId', userData.data.id);
-
           // Update online status on connection
           updateUserOnlineStatus(userData.data.id, true);
 
+          // Listen for friend requests
           socket.current.on('friendRequests', (data) => {
-            console.log("Friend requests:", data);
             formattedRequests = data?.friendRequests.map((request) => ({
               requestId: request.id, 
               senderId: request.senderId,
@@ -106,22 +112,22 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
             setNotifications(data.count);
           });
 
-          const debouncedUpdate = debounce(updateUserOnlineStatus, 500); // Debounce for 500ms
+          // Optimized real-time handling (no debouncing)
           const handleVisibilityChange = () => {
             if (document.hidden) {
               if (socket.current && socket.current.connected) {
-                debouncedUpdate(userData?.data?.id, false);
+                updateUserOnlineStatus(userData?.data?.id, false);  // Set to offline immediately
               }
             } else {
               if (socket.current && socket.current.connected) {
-                debouncedUpdate(userData?.data?.id, true);
+                updateUserOnlineStatus(userData?.data?.id, true);  // Set to online immediately
               }
             }
           };
-          
-          const handleBeforeUnload = (event) => {
+
+          const handleBeforeUnload = () => {
             if (socket.current && socket.current.connected) {
-              updateUserOnlineStatus(userData?.data?.id, false); // User closed browser
+              updateUserOnlineStatus(userData?.data?.id, false);  // User closed browser
             }
           };
 
@@ -129,16 +135,16 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
           if (!socketInitialized) {
             document.addEventListener('visibilitychange', handleVisibilityChange);
             window.addEventListener('beforeunload', handleBeforeUnload);
-            socketInitialized = true; // Set the flag to true
+            socketInitialized = true;  // Prevent multiple initializations
           }
 
           return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('beforeunload', handleBeforeUnload);
             if (socket.current) {
-              socket.current.disconnect(); // Disconnect socket on unmount
+              socket.current.disconnect();  // Disconnect socket on unmount
             }
-            socketInitialized = false; // Reset the flag on unmount
+            socketInitialized = false;  // Reset the flag on unmount
           };
         }
       } catch (error) {
@@ -151,7 +157,7 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [handleMe]);
+  }, [handleMe, url]);
 
   return (
     <div className="profile-container d-flex align-items-center mb-3 p-2">
@@ -160,13 +166,13 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
       </div>
       <div className="profile-info flex-grow-1">
         <div className="profile-name">{user?.name || "User"}</div>
-        <div className="profile-status text-success">{user?.isOnline ? "Active Now" : "Offline"}</div>
+        <div className="profile-status text-success">{status ? "Active Now" : "Offline"}</div>
       </div>
 
       {/* Notification Icon */}
       <div className="profile-notifications me-3 position-relative">
         <button className="btn p-0" onClick={handleNotificationClick}>
-          <i className="fas fa-bell" style={{ fontSize: "22px", color: "#555" }}></i>
+          <i className="fas fa-bell notification-icon" style={{ fontSize: "22px", color: "#555" }}></i>
         </button>
         {notifications > 0 && (
           <span className="notification-badge">{notifications}</span>

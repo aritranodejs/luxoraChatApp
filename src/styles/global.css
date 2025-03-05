@@ -97,6 +97,10 @@ body.dark-mode .modal-header {
     color: white !important;
 }
 
+body.dark-mode .btn-close {
+    background-color:white !important;
+}
+
 body.dark-mode .no-friend-requests {
     color: #000 !important;
 }
@@ -114,6 +118,10 @@ body.dark-mode .no-friend-requests {
     cursor: pointer;
 }
 
+body.dark-mode .notification-icon {
+    color: white !important;
+}
+
 .notification-badge {
     font-size: 12px;
     width: 18px;
@@ -121,7 +129,7 @@ body.dark-mode .no-friend-requests {
     text-align: center;
     line-height: 18px;
     background-color: red;
-    color: white;
+    color: #000;
     border-radius: 50%;
     position: absolute;
     top: -5px;
