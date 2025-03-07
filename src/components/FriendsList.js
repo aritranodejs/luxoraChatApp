@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Modal from "react-modal";
 import { globalUsers, friends, getPendingRequests, addFriend, cancelRequest } from "../services/friendService";
 import Swal from "sweetalert2";
 import { getUser } from "../utils/authHelper";
+import io from 'socket.io-client';
 
 Modal.setAppElement("#root");
 
@@ -12,6 +13,8 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
   const [friendsList, setFriendsList] = useState([]);
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const socket = useRef(null);
+  const url = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
 
   const handleAddFriend = async (receiverId) => {
     try {
@@ -74,7 +77,7 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
     }
   };  
 
-  const fetchUsersAndFriends = async () => {
+  const fetchUsersAndFriends = useCallback(async () => {
     try {
       let globalUsersData = await globalUsers();
       globalUsersData = globalUsersData?.data || [];
@@ -84,46 +87,68 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
   
       let pendingRequests = await getPendingRequests();
       pendingRequests = pendingRequests?.data?.friends || [];
+
+      // Socket 
+      socket.current = io(url); // Initialize socket connection
+      const userId = getUser()?.id;
+      socket.current.emit('userId', userId);
+
+      // Listen for s
+      socket.current.on('friendListUpdated', (data) => {
+        globalUsersData = data?.users || [] ;
+        friendsData = data?.friends || [];
+        pendingRequests = data?.pendingFriends || [];
+
+        const { updatedUsers, extractedFriendsList } = getUsersAndFriends(globalUsersData, friendsData, pendingRequests);
+        setUsers(updatedUsers);
+        setFriendsList(extractedFriendsList);
+      }); 
   
-      let extractedFriendsList = friendsData.map((friend) => ({
-        friendId: friend?.id,
-        senderId: friend?.senderId,
-        receiverId: friend?.receiverId,
-        ...friend.friendInfo,
-      }));
-  
-      const updatedUsers = globalUsersData.map((user) => {
-        const matchedFriend = extractedFriendsList.find(
-          (friend) => friend.senderId === user.id || friend.receiverId === user.id
-        );
-      
-        const matchedPendingRequest = pendingRequests.find(
-          (request) => request.senderId === user.id || request.receiverId === user.id
-        );
-      
-        return {
-          friendId: matchedFriend 
-            ? matchedFriend.friendId  
-            : matchedPendingRequest
-            ? matchedPendingRequest.id  
-            : null,  
-      
-          ...user,
-          isFriend: friendsData.some((friend) => friend?.friendInfo?.id === user.id),
-          hasPendingRequest: pendingRequests.some((request) => request?.receiverId === user.id),
-        };
-      });      
-  
+      const { updatedUsers, extractedFriendsList } = getUsersAndFriends(globalUsersData, friendsData, pendingRequests);
+
       setUsers(updatedUsers);
       setFriendsList(extractedFriendsList);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
-  };   
+  }, [url]); 
+  const getUsersAndFriends = (globalUsersData, friendsData, pendingRequests) => {
+
+    let extractedFriendsList = friendsData.map((friend) => ({
+      friendId: friend?.id,
+      senderId: friend?.senderId,
+      receiverId: friend?.receiverId,
+      ...friend.friendInfo,
+    }));
+
+    const updatedUsers = globalUsersData.map((user) => {
+      const matchedFriend = extractedFriendsList.find(
+        (friend) => friend.senderId === user.id || friend.receiverId === user.id
+      );
+    
+      const matchedPendingRequest = pendingRequests.find(
+        (request) => request.senderId === user.id || request.receiverId === user.id
+      );
+    
+      return {
+        friendId: matchedFriend 
+          ? matchedFriend.friendId  
+          : matchedPendingRequest
+          ? matchedPendingRequest.id  
+          : null,  
+    
+        ...user,
+        isFriend: friendsData.some((friend) => friend?.friendInfo?.id === user.id),
+        hasPendingRequest: pendingRequests.some((request) => request?.receiverId === user.id),
+      };
+    });
+
+    return { extractedFriendsList, updatedUsers };
+  }
 
   useEffect(() => {
     fetchUsersAndFriends();
-  }, []);
+  }, [fetchUsersAndFriends]);
 
   const filteredUsers = users.filter((user) => {
     const searchLower = searchQuery.toLowerCase();
