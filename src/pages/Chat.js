@@ -3,8 +3,8 @@ import { useParams } from "react-router-dom";
 import ChatWindow from "../components/ChatWindow";
 
 const Chat = ({ onClose }) => {
-  const { friendId } = useParams();
-  return <ChatWindow friendId={friendId} onClose={onClose} />;
+  const { friendSlug } = useParams();
+  return <ChatWindow friendSlug={friendSlug} onClose={onClose} />;
 };
 
 export default Chat;

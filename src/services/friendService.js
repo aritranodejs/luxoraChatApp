@@ -127,3 +127,39 @@ export async function cancelRequest(friendId) {
         throw error;
     }
 }
+
+export const getFriend = async (friendSlug) => {
+    try {
+        const response = await getResponse("user/friends/get-friend?friendSlug=" + friendSlug, "get", null, {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${getAuthToken()}`,
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw data;
+        }
+
+        return data;
+    } catch (error) {
+        throw error;
+    }    
+}
+
+export const updatePeerId = async (friendSlug, peerId) => {
+    try {
+        const response = await getResponse("user/friends/update-peer-id", "post", JSON.stringify({ friendSlug, peerId }), {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${getAuthToken()}`,
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw data;
+        }
+
+        return data;
+    } catch (error) {
+        throw error;
+    }    
+}

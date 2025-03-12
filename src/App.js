@@ -47,7 +47,7 @@ function AppContent() {
             <>
               <Route path="/chat" element={<h1 className="text-muted text-center app-title">Welcome to LuxoraChat</h1>} />
               <Route path="/chat/search" element={<Friends onlyFriends={false} />} />
-              <Route path="/chat/:friendId" element={<Chat onClose={closeDrawer} />} />
+              <Route path="/chat/:friendSlug" element={<Chat onClose={closeDrawer} />} />
               <Route path="/*" element={<Navigate to="/chat" />} />
             </>
           ) : (
