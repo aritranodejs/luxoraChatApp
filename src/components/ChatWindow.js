@@ -25,6 +25,7 @@ const ChatWindow = ({ friendSlug }) => {
   const mediaStream = useRef(null);
   const url = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
   const userId = getUser()?.id;
+  const roomName = `room-${userId}-${friendId}`;
 
   useEffect(() => {
     socket.current = io(url);
@@ -36,21 +37,28 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current.emit("userId", userId);
     });
 
-    // ✅ Listen for Incoming Calls
+    // Join a chat room (Keep this for real-time updates)
+    if (friendId) {
+      socket.current.emit("joinChat", { room: roomName });
+    }
+
+    // Listen for Incoming Calls
     socket.current.on("incomingCall", ({ callerId }) => {
       setIncomingCall({ callerId });
     });
 
-    // ✅ Listen for Incoming Messages
-    socket.current.on("receiveMessage", ({ senderId, message }) => {
-      setMessages(prevMessages => [...prevMessages, { sender: senderId, text: message }]);
+    // Listen for Incoming Messages
+    socket.current.on("receiveMessage", ({ senderId, receiverId, message }) => {
+      if (receiverId === userId || senderId === userId) {
+        setMessages(prevMessages => [...prevMessages, { senderId, receiverId, text: message }]);
+      }
     });
 
     return () => {
       peer.current.destroy();
       socket.current.disconnect();
     };
-  }, [friendSlug, userId, url]);
+  }, [friendSlug, userId, url, roomName, friendId]);
 
   useEffect(() => {
     const fetchFriendData = async () => {
@@ -73,6 +81,8 @@ const ChatWindow = ({ friendSlug }) => {
     const fetchChatHistory = async () => {
       try {
         const response = await getChats(friendSlug);
+
+        console.log("Chat history response:", response?.data);
         
         if (response.status === 200) {
           setMessages(response?.data);
@@ -132,13 +142,22 @@ const ChatWindow = ({ friendSlug }) => {
     setIncomingCall(null);
   }, [incomingCall, friendSlug]);
 
-  // ✅ Send Chat Message
+  // Send Chat Message
   const sendMessage = async () => {
     if (input.trim() !== "") {
       try {
         await sendMessages(friendSlug, input);
-        socket.current.emit("sendMessage", { senderId: userId, friendId, message: input });
-        setMessages([...messages, { sender: "You", text: input }]);
+        const newMessage = {
+          senderId: userId,
+          receiverId: friendId,
+          text: input
+        };
+
+        setMessages(prevMessages => [...prevMessages, newMessage]);
+
+        // Emit message to the chat room
+        socket.current.emit("sendMessage", { room: roomName, ...newMessage });
+
         setInput("");
       } catch (error) {
         console.error("Error sending message:", error);
@@ -195,9 +214,9 @@ const ChatWindow = ({ friendSlug }) => {
           {/* ✅ Chat Messages Body */}
           <div className="chat-body flex-grow-1 overflow-auto p-3">
             {messages.map((msg, index) => (
-              <div key={index} className={`d-flex ${msg.sender === "You" ? "justify-content-end" : "justify-content-start"}`}>
-                <div className={`p-2 rounded-3 ${msg.sender === "You" ? "bg-primary text-white" : "bg-secondary text-white"}`}>
-                  {msg.content}
+              <div key={index} className={`d-flex ${msg?.sender === "You" ? "justify-content-end" : "justify-content-start"}`}>
+                <div className={`p-2 rounded-3 ${msg?.sender === "You" ? "bg-primary text-white" : "bg-secondary text-white"}`}>
+                  {msg?.text}
                 </div>
               </div>
             ))}
