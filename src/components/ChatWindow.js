@@ -30,11 +30,16 @@ const ChatWindow = ({ friendSlug }) => {
   useEffect(() => {
     socket.current = io(url);
     peer.current = new Peer();
-
+    
     peer.current.on("open", async (id) => {
       const response = await updatePeerId(friendSlug, id);
       setFriendId(response?.data?.id);
       socket.current.emit("userId", userId);
+    });
+
+    // Handle incoming calls from PeerJS
+    peer.current.on("call", (call) => {
+      setIncomingCall(call);
     });
 
     // Join a chat room (Keep this for real-time updates)
