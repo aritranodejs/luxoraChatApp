@@ -1,0 +1,83 @@
+/* ChatWindow.css */
+
+/* Incoming Call Overlay */
+.incoming-call-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.75);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.incoming-call-box {
+  max-width: 350px;
+  width: 90%;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  padding: 30px 20px;
+  text-align: center;
+}
+
+/* Pulse animation for incoming call icon */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.7);
+  }
+  
+  70% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 10px rgba(13, 110, 253, 0);
+  }
+  
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+  }
+}
+
+.pulse-icon {
+  animation: pulse 1.5s infinite;
+}
+
+/* Call buttons styling */
+.call-button {
+  border-radius: 50px;
+  padding: 8px 24px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  color: white;
+}
+
+.call-button svg {
+  margin-right: 8px;
+}
+
+.call-button-accept {
+  background-color: #25D366;
+  border-color: #25D366;
+}
+
+.call-button-accept:hover {
+  background-color: #21BD5B;
+  border-color: #21BD5B;
+}
+
+.call-button-reject {
+  background-color: #FF3B30;
+  border-color: #FF3B30;
+}
+
+.call-button-reject:hover {
+  background-color: #E0352B;
+  border-color: #E0352B;
+}

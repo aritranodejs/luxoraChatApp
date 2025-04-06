@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Otp from "./pages/Otp";
 import Register from "./pages/Register";
 import Profile from "./components/Profile";
+import VideoCall from "./pages/VideoCall";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./styles/global.css";
@@ -51,6 +52,10 @@ function AppContent() {
               <Route path="/chat" element={<h1 className="text-muted text-center app-title">Welcome to LuxoraChat</h1>} />
               <Route path="/chat/search" element={<Friends onlyFriends={false} />} />
               <Route path="/chat/:friendSlug" element={<Chat onClose={closeDrawer} />} />
+              
+              {/* Video Call Route */}
+              <Route path="/call/:friendSlug" element={<VideoCall />} />
+              
               <Route path="/*" element={<Navigate to="/chat" />} />
             </>
           ) : (

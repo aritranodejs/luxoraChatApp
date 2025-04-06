@@ -5,6 +5,7 @@ import { io } from "socket.io-client";
 import { updatePeerId, getFriend } from "../services/friendService";
 import { getUser } from "../utils/authHelper";
 import { getChats, sendMessages } from "../services/chatService"; // ✅ Import chat API functions
+import "../styles/ChatWindow.css"; // Import the CSS file
 
 const ChatWindow = ({ friendSlug }) => {
   const [messages, setMessages] = useState([]);
@@ -32,7 +33,7 @@ const ChatWindow = ({ friendSlug }) => {
   useEffect(() => {
     socket.current = io(url);
     peer.current = new Peer();
-    
+
     peer.current.on("open", async (id) => {
       const response = await updatePeerId(friendSlug, id);
       setFriendId(response?.data?.id);
@@ -42,10 +43,12 @@ const ChatWindow = ({ friendSlug }) => {
     // Handle incoming calls from PeerJS
     peer.current.on("call", (call) => {
       // This is a real PeerJS call object with an answer method
+      const callType = call.metadata?.callType || "video";
       setIncomingCall({
         type: 'peerjs',
         callObject: call,
-        callerId: null
+        callerId: null,
+        callType: callType
       });
     });
 
@@ -54,6 +57,35 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current?.disconnect();
     };
   }, [friendSlug, userId, url]);
+
+  // Define endCall function before it's used in the above useEffect
+  const endCall = useCallback(() => {
+    // Close media streams
+    if (mediaStream.current) {
+      const tracks = mediaStream.current.getTracks();
+      tracks.forEach(track => track.stop());
+      mediaStream.current = null;
+    }
+    
+    // Close the call
+    if (callInstance.current) {
+      callInstance.current.close();
+      callInstance.current = null;
+    }
+    
+    // Clear video elements
+    if (myVideoRef.current) myVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    
+    // Notify the other user that we've ended the call
+    socket.current.emit("endCall", { 
+      friendId,
+      callerId: userId
+    });
+    
+    // Reset state
+    setActiveCall(false);
+  }, [friendId, userId]);
 
   // Separate useEffect for socket room management
   useEffect(() => {
@@ -73,17 +105,57 @@ const ChatWindow = ({ friendSlug }) => {
     
     // Also join personal room to catch direct messages
     socket.current.emit("joinChat", { room: `${userId}` });
-    
+
     // Listen for Incoming Calls
-    socket.current.on("incomingCall", ({ callerId }) => {
+    socket.current.on("incomingCall", ({ callerId, callerName, callerPeerId, callType }) => {
+      console.log("Incoming call received from:", callerId, "with type:", callType);
       // This is just a notification about an incoming call, not the actual call object
       setIncomingCall({
         type: 'socket',
         callerId: callerId,
-        callObject: null
+        callerName: callerName,
+        callerPeerId: callerPeerId,
+        callObject: null,
+        callType: callType || 'video' // Use the received call type with fallback
       });
     });
     
+    // Listen for Call Accepted (for the caller)
+    socket.current.on("callAccepted", ({ accepterId }) => {
+      console.log("Call accepted by:", accepterId);
+      // We'll handle navigation to call page elsewhere
+    });
+    
+    // Listen for Call Ended
+    socket.current.on("callEnded", () => {
+      console.log("Call ended by the other user");
+      // If we're in a call, end it
+      if (activeCall) {
+        endCall();
+      }
+      // If we have an incoming call, clear it
+      if (incomingCall) {
+        setIncomingCall(null);
+      }
+    });
+
+    // Listen for Call Rejected
+    socket.current.on("callRejected", () => {
+      console.log("Call was rejected by the recipient");
+      // Close resources and reset UI
+      if (mediaStream.current) {
+        mediaStream.current.getTracks().forEach(track => track.stop());
+        mediaStream.current = null;
+      }
+      
+      if (callInstance.current) {
+        callInstance.current.close();
+        callInstance.current = null;
+      }
+      
+      setActiveCall(false);
+    });
+
     // Listen for Incoming Messages
     socket.current.on("receiveMessage", (data) => {
       console.log("📩 Received message via socket:", data);
@@ -140,8 +212,10 @@ const ChatWindow = ({ friendSlug }) => {
       }
       socket.current.off("receiveMessage");
       socket.current.off("incomingCall");
+      socket.current.off("callEnded");
+      socket.current.off("callRejected");
     };
-  }, [friendId, userId]);
+  }, [friendId, userId, endCall, activeCall, incomingCall]);
 
   useEffect(() => {
     const fetchFriendData = async () => {
@@ -246,59 +320,130 @@ const ChatWindow = ({ friendSlug }) => {
     }
   }, [messages]);
 
-  const startCall = useCallback((type) => {
+  const startCall = async (friendId, friendPeerId, friendName, callType = 'video') => {
+    console.log(`Starting ${callType} call with ${friendName} (ID: ${friendId}, PeerID: ${friendPeerId})`);
+    
     if (!friendPeerId) {
-      alert(`${friendName || "Your friend"} is offline.`);
+      alert("This user is currently offline. You can only call users who are online.");
       return;
     }
-
-    navigator.mediaDevices.getUserMedia({ video: type === "video", audio: true })
-      .then((userStream) => {
-        setActiveCall(true);
-        mediaStream.current = userStream;
-        if (myVideoRef.current) myVideoRef.current.srcObject = userStream;
-        const call = peer.current.call(friendPeerId, userStream);
-        callInstance.current = call;
-        call.on("stream", (remoteUserStream) => {
-          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteUserStream;
-        });
-
-        socket.current.emit("callUser", { callerId: userId, friendId });
-      })
-      .catch(error => alert("Error accessing media devices: " + error.message));
-  }, [friendPeerId, friendName, userId, friendId]);
-
-  const acceptCall = useCallback(() => {
-    if (!incomingCall) return;
-
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then((userStream) => {
-        setActiveCall(true);
-        mediaStream.current = userStream;
-        if (myVideoRef.current) myVideoRef.current.srcObject = userStream;
+    
+    try {
+      // Set active call state
+      setActiveCall({
+        isActive: true,
+        friendId: friendId,
+        friendName: friendName,
+        type: callType
+      });
+      
+      // Request media access
+      const mediaConstraints = {
+        audio: true,
+        video: callType === 'video'
+      };
+      
+      // Get local media stream but we don't need to store it here
+      await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      console.log(`Got local media stream for ${callType} call`);
+      
+      // IMPORTANT: Notify the friend about incoming call via socket
+      if (socket.current) {
+        console.log(`Emitting incomingCall event to user ${friendId}`);
         
-        if (incomingCall.type === 'peerjs' && incomingCall.callObject) {
-          // If we have a PeerJS call object, use its answer method
-          incomingCall.callObject.answer(userStream);
-          incomingCall.callObject.on("stream", (remoteUserStream) => {
-            if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteUserStream;
-          });
-        } else {
-          // If we only have callerId from socket notification, we need to wait
-          // for the actual PeerJS call to arrive
-          console.log("Accepting call from socket notification, waiting for PeerJS call...");
-        }
-
-        // Notify the caller that we've accepted the call
-        socket.current.emit("acceptCall", { 
-          callerId: incomingCall.callerId || (incomingCall.type === 'peerjs' ? userId : null), 
-          friendSlug 
+        // This format matches what the receiving end expects in the incomingCall handler
+        socket.current.emit("incomingCall", {
+          callerId: userId,
+          callerName: getUser()?.name || 'User',
+          callerPeerId: peer.current.id,
+          friendId: friendId,
+          callType: callType
         });
-        
-        setIncomingCall(null);
-      })
-      .catch(error => alert("Error accessing media devices: " + error.message));
-  }, [incomingCall, friendSlug, userId]);
+      } else {
+        console.error("Socket not available, cannot notify friend about call");
+        throw new Error("Socket connection not available");
+      }
+      
+      // Save call data in sessionStorage for the video call page
+      const callData = {
+        friendId: friendId,
+        friendName: friendName,
+        friendPeerId: friendPeerId,
+        callType: callType,
+        isInitiator: true
+      };
+      
+      // Store call data in sessionStorage
+      sessionStorage.setItem('callData', JSON.stringify(callData));
+      
+      // Navigate to video call page
+      window.location.href = `/call/${friendId}?callType=${callType}&friendName=${encodeURIComponent(friendName)}`;
+    } catch (err) {
+      console.error('Error starting call:', err);
+      alert(`Could not start call: ${err.message}`);
+      setActiveCall({ isActive: false });
+    }
+  };
+
+  const acceptCall = async () => {
+    console.log("Accepting call from:", incomingCall);
+    
+    if (!incomingCall) {
+      console.error("No incoming call to accept");
+      return;
+    }
+    
+    try {
+      // Request media access
+      const mediaConstraints = {
+        audio: true,
+        video: incomingCall.callType === 'video'
+      };
+      
+      // Get local media stream but we don't need to store it here
+      await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      console.log(`Got local media stream for ${incomingCall.callType} call`);
+      
+      // Save call data in sessionStorage
+      const callData = {
+        friendId: incomingCall.callerId,
+        friendName: incomingCall.callerName || friendName, // Use friendName as fallback
+        friendPeerId: incomingCall.callerPeerId,
+        callType: incomingCall.callType,
+        isInitiator: false
+      };
+      
+      console.log("Call data for acceptance:", callData);
+      
+      // Store call data
+      sessionStorage.setItem('callData', JSON.stringify(callData));
+      
+      // Notify caller that call was accepted
+      if (socket.current) {
+        console.log("Emitting callAccepted event to caller:", incomingCall.callerId);
+        socket.current.emit('callAccepted', {
+          callerId: incomingCall.callerId,
+          accepterId: userId,
+          accepterPeerId: peer.current?.id
+        });
+      } else {
+        console.error("Socket not available, cannot notify caller");
+      }
+      
+      // Handle PeerJS call if present
+      if (incomingCall.type === 'peerjs' && incomingCall.callObject) {
+        console.log("Found PeerJS call object, will answer in VideoCall component");
+        // The VideoCall component will handle answering this call
+      }
+      
+      // Navigate to video call page
+      window.location.href = `/call/${incomingCall.callerId}?callType=${incomingCall.callType}&friendName=${encodeURIComponent(callData.friendName)}`;
+    } catch (err) {
+      console.error('Error accepting call:', err);
+      alert(`Could not accept call: ${err.message}`);
+      setIncomingCall(null);
+    }
+  };
 
   const rejectCall = useCallback(() => {
     if (!incomingCall) return;
@@ -460,33 +605,44 @@ const ChatWindow = ({ friendSlug }) => {
             <div className="d-flex">
               {!activeCall ? (
                 <>
-                  <button className="btn btn-outline-secondary me-2" onClick={() => startCall("audio")}>
-                    <FaPhoneAlt />
+                  <button className="btn btn-outline-secondary me-2" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")} title="Start audio call">
+                    <FaPhoneAlt /> <span className="d-none d-md-inline"></span>
                   </button>
-                  <button className="btn btn-outline-secondary" onClick={() => startCall("video")}>
-                    <FaVideo />
+                  <button className="btn btn-outline-secondary" onClick={() => startCall(friendId, friendPeerId, friendName, "video")} title="Start video call">
+                    <FaVideo /> <span className="d-none d-md-inline"></span>
                   </button>
                 </>
               ) : (
-                <button className="btn btn-danger" onClick={() => setActiveCall(false)}>
+                <button className="btn btn-danger" onClick={endCall}>
                   <FaPhoneSlash /> End Call
                 </button>
               )}
             </div>
           </div>
 
-          {/* ✅ Incoming Call UI (Now using acceptCall & rejectCall) */}
+          {/* Incoming Call UI */}
           {incomingCall && (
             <div className="incoming-call-overlay">
               <div className="incoming-call-box">
-                <h4>Incoming Call</h4>
-                <button className="btn btn-success me-2" onClick={acceptCall}>Accept</button>
-                <button className="btn btn-danger" onClick={rejectCall}>Reject</button>
+                <div className={`pulse-icon mb-3 ${incomingCall.callType === "audio" ? "bg-primary" : "bg-success"} text-white rounded-circle d-flex justify-content-center align-items-center mx-auto`}
+                     style={{ width: "80px", height: "80px" }}>
+                  {incomingCall.callType === "audio" ? <FaPhoneAlt size={32} /> : <FaVideo size={32} />}
+                </div>
+                <h4 className="mb-3">Incoming {incomingCall.callType === "audio" ? "Audio" : "Video"} Call</h4>
+                <p className="mb-4">{friendName || "Your friend"} is calling...</p>
+                <div className="d-flex justify-content-center">
+                  <button className="btn call-button call-button-accept me-3" onClick={acceptCall}>
+                    <FaPhoneAlt /> Accept
+                  </button>
+                  <button className="btn call-button call-button-reject" onClick={rejectCall}>
+                    <FaPhoneSlash /> Decline
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {/* ✅ Chat Messages Body */}
+          {/* Chat Messages Body */}
           <div className="chat-body flex-grow-1 overflow-auto p-3">
             {Array.isArray(messages) && messages.length > 0 ? (
               (() => {
@@ -561,7 +717,7 @@ const ChatWindow = ({ friendSlug }) => {
                         </div>
                       );
                     })}
-                  </div>
+                </div>
                 ));
               })()
             ) : (
@@ -572,7 +728,7 @@ const ChatWindow = ({ friendSlug }) => {
             )}
           </div>
 
-          {/* ✅ Chat Input + Send Button */}
+          {/* Chat Input + Send Button */}
           <div className="chat-footer d-flex p-2 border-top">
             <input 
               type="text" 
