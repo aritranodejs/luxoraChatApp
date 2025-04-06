@@ -38,7 +38,12 @@ const ChatWindow = ({ friendSlug }) => {
 
     // Handle incoming calls from PeerJS
     peer.current.on("call", (call) => {
-      setIncomingCall(call);
+      // This is a real PeerJS call object with an answer method
+      setIncomingCall({
+        type: 'peerjs',
+        callObject: call,
+        callerId: null
+      });
     });
 
     return () => {
@@ -51,33 +56,48 @@ const ChatWindow = ({ friendSlug }) => {
   useEffect(() => {
     if (!socket.current) return;
     
-    // Join room based on both user IDs to ensure both users join the same room
-    // Sort IDs to ensure the same room name regardless of who initiates
+    // Create a standard room ID for both users (sorted to ensure consistency)
     const userIds = [userId, friendId].filter(id => id).sort();
     const directRoom = userIds.length === 2 ? `chat-${userIds[0]}-${userIds[1]}` : null;
     
     if (directRoom) {
       console.log("Joining chat room:", directRoom);
       socket.current.emit("joinChat", { room: directRoom });
+      
+      // Also join a direct room with friend specifically
+      const directFriendRoom = `direct-${friendId}`;
+      socket.current.emit("joinChat", { room: directFriendRoom });
     }
     
-    // Also join a user-specific room to receive messages when this user is the target
-    socket.current.emit("joinChat", { room: `user-${userId}` });
+    // Always join user's personal room to receive messages
+    const personalRoom = `user-${userId}`;
+    socket.current.emit("joinChat", { room: personalRoom });
     
     // Listen for Incoming Calls
     socket.current.on("incomingCall", ({ callerId }) => {
-      setIncomingCall({ callerId });
+      // This is just a notification about an incoming call, not the actual call object
+      setIncomingCall({
+        type: 'socket',
+        callerId: callerId,
+        callObject: null
+      });
     });
-
+    
     // Listen for Incoming Messages
     socket.current.on("receiveMessage", (data) => {
-      console.log("Received message via socket:", data);
+      console.log("📩 Received message via socket:", data);
       // Extract data using the correct field names
       const { senderId, receiverId, content, text, timestamp, createdAt } = data;
       const messageContent = content || text; // Support both formats
       
+      if (!messageContent) {
+        console.log("📩 Received empty message, ignoring");
+        return;
+      }
+      
       // Accept messages meant for this user (either as sender or receiver)
       if (receiverId === userId || senderId === userId) {
+        console.log(`📩 Message is for me! senderId=${senderId}, receiverId=${receiverId}, userId=${userId}`);
         setMessages(prevMessages => {
           // Create message with timestamp from server if available
           const newMessage = { 
@@ -87,16 +107,23 @@ const ChatWindow = ({ friendSlug }) => {
             timestamp: timestamp || createdAt || new Date().toISOString() // Use source timestamp if available
           };
           
-          // Prevent duplicate messages by checking content
+          // Prevent duplicate messages by checking content and IDs
           const messageExists = prevMessages.some(
             msg => (msg.text === messageContent || msg.content === messageContent) && 
-                  msg.senderId === senderId && 
-                  msg.receiverId === receiverId
+                  String(msg.senderId) === String(senderId) && 
+                  String(msg.receiverId) === String(receiverId)
           );
           
-          if (messageExists) return prevMessages;
+          if (messageExists) {
+            console.log("📩 Message already exists, not adding duplicate");
+            return prevMessages;
+          }
+          
+          console.log("📩 Adding new message to state:", newMessage);
           return [...prevMessages, newMessage];
         });
+      } else {
+        console.log(`📩 Message is not for me. senderId=${senderId}, receiverId=${receiverId}, userId=${userId}`);
       }
     });
 
@@ -242,21 +269,46 @@ const ChatWindow = ({ friendSlug }) => {
         setActiveCall(true);
         mediaStream.current = userStream;
         if (myVideoRef.current) myVideoRef.current.srcObject = userStream;
-        incomingCall.answer(userStream);
-        incomingCall.on("stream", (remoteUserStream) => {
-          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteUserStream;
-        });
+        
+        if (incomingCall.type === 'peerjs' && incomingCall.callObject) {
+          // If we have a PeerJS call object, use its answer method
+          incomingCall.callObject.answer(userStream);
+          incomingCall.callObject.on("stream", (remoteUserStream) => {
+            if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteUserStream;
+          });
+        } else {
+          // If we only have callerId from socket notification, we need to wait
+          // for the actual PeerJS call to arrive
+          console.log("Accepting call from socket notification, waiting for PeerJS call...");
+        }
 
-        socket.current.emit("acceptCall", { callerId: incomingCall.callerId, friendSlug });
+        // Notify the caller that we've accepted the call
+        socket.current.emit("acceptCall", { 
+          callerId: incomingCall.callerId || (incomingCall.type === 'peerjs' ? userId : null), 
+          friendSlug 
+        });
+        
         setIncomingCall(null);
       })
       .catch(error => alert("Error accessing media devices: " + error.message));
-  }, [incomingCall, friendSlug]);
+  }, [incomingCall, friendSlug, userId]);
 
   const rejectCall = useCallback(() => {
-    socket.current.emit("rejectCall", { callerId: incomingCall.callerId, friendSlug });
+    if (!incomingCall) return;
+    
+    // If we have a PeerJS call object, close it
+    if (incomingCall.type === 'peerjs' && incomingCall.callObject) {
+      incomingCall.callObject.close();
+    }
+    
+    // Notify the caller that we've rejected the call
+    socket.current.emit("rejectCall", { 
+      callerId: incomingCall.callerId || (incomingCall.type === 'peerjs' ? userId : null), 
+      friendSlug 
+    });
+    
     setIncomingCall(null);
-  }, [incomingCall, friendSlug]);
+  }, [incomingCall, friendSlug, userId]);
 
   // Send Chat Message
   const sendMessage = async () => {
@@ -264,7 +316,7 @@ const ChatWindow = ({ friendSlug }) => {
       try {
         // First save message to database
         const response = await sendMessages(friendSlug, input);
-        console.log("Message sent response:", response?.data);
+        console.log("📤 Message sent response:", response?.data);
         
         // Get the proper timestamp from the response
         let messageTimestamp = new Date().toISOString();
@@ -280,7 +332,7 @@ const ChatWindow = ({ friendSlug }) => {
           messageTimestamp = response.data.timestamp;
         }
         
-        console.log("Using timestamp for new message:", messageTimestamp);
+        console.log("📤 Using timestamp for new message:", messageTimestamp);
         
         // Create message with proper timestamp
         const newMessage = {
@@ -290,22 +342,36 @@ const ChatWindow = ({ friendSlug }) => {
           timestamp: messageTimestamp
         };
 
-        // Update UI immediately
+        // Update UI immediately (for sender)
         setMessages(prevMessages => [...prevMessages, newMessage]);
 
-        // Create a room name based on sorted user IDs for consistency
-        const userIds = [userId, friendId].sort();
-        const directRoom = `chat-${userIds[0]}-${userIds[1]}`;
-
-        // Emit message to socket server
+        // Send to direct rooms to ensure delivery
         if (socket.current) {
-          socket.current.emit("sendMessage", {
-            senderId: userId,
-            receiverId: friendId,
-            content: input,
-            room: directRoom,
-            timestamp: messageTimestamp
+          // 1. Send to shared chat room (sorted IDs)
+          const userIds = [userId, friendId].sort();
+          const directRoom = `chat-${userIds[0]}-${userIds[1]}`;
+          
+          // 2. Also send directly to recipient's personal room
+          const recipientRoom = `user-${friendId}`;
+          
+          // 3. And also send to direct friend room
+          const directFriendRoom = `direct-${friendId}`;
+          
+          console.log(`📤 Emitting message to rooms: ${directRoom}, ${recipientRoom}, ${directFriendRoom}`);
+          
+          // Send to all relevant rooms to maximize chances of delivery
+          [directRoom, recipientRoom, directFriendRoom].forEach(room => {
+            socket.current.emit("sendMessage", {
+              senderId: userId,
+              receiverId: friendId,
+              content: input,
+              text: input, // Include both for compatibility
+              room: room,
+              timestamp: messageTimestamp
+            });
           });
+          
+          console.log("📤 Message emitted to all rooms");
         }
 
         setInput("");
@@ -316,6 +382,7 @@ const ChatWindow = ({ friendSlug }) => {
   };
 
   // Function to format timestamp like WhatsApp/Teams
+  // eslint-disable-next-line no-unused-vars
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
     
