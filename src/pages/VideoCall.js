@@ -62,105 +62,132 @@ const VideoCall = () => {
       
       console.log(`Setting up peer connection - attempt ${attemptCount}`);
       
-      // Initialize PeerJS with specific configuration
-      // Try different configurations based on attempt number
-      let peerConfig;
+      // Create a new Peer with a random ID to avoid collision
+      // Important: Use a completely local Peer instance that doesn't rely on external servers
+      const randomId = `peer_${userId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       
-      // If we've tried the first server and it failed, try alternative configurations
-      if (attemptCount === 1) {
-        // Default configuration - using the free public PeerJS server
-        peerConfig = {
-          debug: 2 // Set debug level for more logging
-        };
-      } else if (attemptCount === 2) {
-        // Alternative configuration 1 - using a different public STUN server
-        peerConfig = {
-          debug: 2,
-          config: {
-            'iceServers': [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:global.stun.twilio.com:3478' }
-            ]
-          }
-        };
-      } else {
-        // Alternative configuration 2 - connecting in restricted mode
-        peerConfig = {
-          debug: 2,
-          config: {
-            'iceServers': [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              { urls: 'stun:stun2.l.google.com:19302' },
-              { urls: 'stun:stun3.l.google.com:19302' },
-              { urls: 'stun:stun4.l.google.com:19302' }
-            ]
-          }
-        };
-      }
+      const peer = new Peer(randomId, {
+        // Don't use any external server
+        host: '0.0.0.0',
+        port: 9000,
+        path: '/myapp',
+        // Use Google's STUN servers for direct connection
+        config: {
+          'iceServers': [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            // Add some free TURN servers for better connectivity
+            {
+              urls: 'turn:numb.viagenie.ca',
+              credential: 'muazkh',
+              username: 'webrtc@live.com'
+            },
+            {
+              urls: 'turn:relay.metered.ca:80',
+              username: 'e8dd65f92c6c98a96aa6c99f',
+              credential: 'uBp3+Jz3ifJe8b/E'
+            }
+          ]
+        }
+      });
       
-      console.log(`Using PeerJS configuration for attempt ${attemptCount}:`, peerConfig);
-      
-      const peer = new Peer(undefined, peerConfig);
       peerRef.current = peer;
       
-      // Add timeout for connection
-      const peerConnectionTimeout = setTimeout(() => {
-        if (!peer.disconnected) {
-          console.log("PeerJS connection timeout - destroying and trying again");
-          peer.destroy();
+      // Signal channel setup through socket.io
+      const socket = io(socketUrl);
+      socketRef.current = socket;
+      
+      socket.emit("userId", userId);
+      console.log("Socket connected for signaling, userId:", userId);
+      
+      // Add specific handler for incoming calls to support mid-call joins
+      socket.on("incomingCall", (data) => {
+        console.log("Received incomingCall event in VideoCall component:", data);
+        
+        // If this call is meant for us and matches our current call, use the peer ID
+        if (data.friendId === userId && storedData?.friendId === data.callerId) {
+          console.log("This is a call relevant to our current session, updating peer info");
           
-          // Show a more user-friendly error with attempt info
-          setError(`Connection attempt ${attemptCount} timed out. ${attemptCount < 3 ? "Trying again..." : "Please check your internet connection and try again."}`);
-          
-          // Retry if we haven't reached max attempts
-          if (attemptCount < 3) {
-            setTimeout(() => {
-              if (!callClosed) {
-                setupPeerConnection(storedData, userMediaStream);
-              }
-            }, 2000);
+          // Update caller peer ID if needed
+          if (data.callerPeerId && (!storedData.friendPeerId || storedData.friendPeerId !== data.callerPeerId)) {
+            console.log(`Updating friend's peer ID from ${storedData.friendPeerId} to ${data.callerPeerId}`);
+            storedData.friendPeerId = data.callerPeerId;
+            
+            // Update session storage
+            sessionStorage.setItem('callData', JSON.stringify(storedData));
           }
         }
-      }, 15000); // 15 second timeout
+      });
       
-      // Wait for peer to open connection
+      // Flag to track if we've established a connection
+      let connectionEstablished = false;
+      
+      // When our peer server is ready
       peer.on('open', (id) => {
-        console.log(`My peer ID is: ${id}`);
-        clearTimeout(peerConnectionTimeout);
+        console.log(`Local peer ID is: ${id}`);
         
-        // Socket setup for signaling
-        const socket = io(socketUrl);
-        socketRef.current = socket;
-        socket.emit("userId", userId);
-        
-        console.log("Socket connected, userId:", userId);
-        
-        // Check if we're the initiator
         const isInitiator = storedData?.isInitiator === true;
         const friendPeerId = storedData?.friendPeerId;
         
         console.log(`Call type: ${callType}, Initiator: ${isInitiator}, Friend PeerID: ${friendPeerId}`);
         
-        if (isInitiator) {
-          // We started the call, so we need to call them
-          console.log(`Calling peer ${friendPeerId} with ${callType} call`);
-          
-          if (!friendPeerId) {
-            setError(`Cannot connect to peer: missing peer ID`);
-            return;
+        // IMPORTANT: Set up socket handler for custom signaling
+        socket.on('peerSignal', (data) => {
+          // Only process signals meant for us
+          if (data.targetPeerId === id) {
+            console.log('Received custom peer signal:', data.signal);
+            
+            if (data.signal.type === 'offer' && !isInitiator) {
+              // We received an offer, so answer it
+              console.log('Answering incoming call offer');
+              const call = peer.call(data.senderPeerId, userMediaStream);
+              
+              call.on('stream', (incomingStream) => {
+                console.log('Received remote stream after accepting offer');
+                connectionEstablished = true;
+                setRemoteStream(incomingStream);
+                
+                setCallData(prev => ({
+                  ...prev,
+                  remoteStream: incomingStream,
+                  callInstance: call
+                }));
+              });
+            }
+            
+            // For other signal types, the default PeerJS handlers will work
           }
+        });
+        
+        // Share our peer ID with the friend through socket
+        socket.emit('updatePeerId', {
+          userId: userId,
+          peerId: id,
+          friendId: friendSlug
+        });
+        
+        if (isInitiator && friendPeerId) {
+          console.log(`Initiating call to peer ${friendPeerId}`);
           
-          const call = peer.call(friendPeerId, userMediaStream, {
-            metadata: { callType }
+          // First, emit a custom signal to alert the other peer
+          socket.emit('peerSignal', {
+            signal: { type: 'offer-prep' },
+            senderPeerId: id,
+            targetPeerId: friendPeerId
           });
           
-          // Handle the response with their stream
+          // Then make the actual call
+          const call = peer.call(friendPeerId, userMediaStream);
+          
+          // Listen for their stream
           call.on('stream', (incomingStream) => {
             console.log('Received remote stream as initiator');
+            connectionEstablished = true;
             setRemoteStream(incomingStream);
             
-            // Update callData with the streams and call instance
             setCallData(prev => ({
               ...prev,
               remoteStream: incomingStream,
@@ -175,21 +202,36 @@ const VideoCall = () => {
           
           call.on('error', (err) => {
             console.error('Call error:', err);
-            setError(`Call error: ${err.message}`);
+            socket.emit('peerSignal', {
+              signal: { type: 'error', message: err.message },
+              senderPeerId: id,
+              targetPeerId: friendPeerId
+            });
+            setError(`Call connection error: ${err.message}`);
           });
-        } else {
-          // We're receiving a call, wait for the call event
-          console.log('Waiting for incoming call');
+        } else if (!isInitiator) {
+          // We're waiting for a call, let's notify the initiator of our peer ID
+          console.log('Waiting for incoming call, sending our peer ID to initiator');
           
+          const initiatorId = storedData?.friendId;
+          if (initiatorId) {
+            socket.emit('acceptCall', {
+              callerId: initiatorId,
+              accepterId: userId,
+              accepterPeerId: id
+            });
+          }
+          
+          // Listen for incoming calls
           peer.on('call', (incomingCall) => {
-            console.log('Received incoming call, answering');
+            console.log('Received incoming call, answering automatically');
             incomingCall.answer(userMediaStream);
             
             incomingCall.on('stream', (incomingStream) => {
               console.log('Received remote stream as receiver');
+              connectionEstablished = true;
               setRemoteStream(incomingStream);
               
-              // Update callData with the streams and call instance
               setCallData(prev => ({
                 ...prev,
                 remoteStream: incomingStream,
@@ -204,50 +246,41 @@ const VideoCall = () => {
             
             incomingCall.on('error', (err) => {
               console.error('Call error:', err);
-              setError(`Call error: ${err.message}`);
+              setError(`Call connection error: ${err.message}`);
             });
           });
+        } else {
+          setError('Cannot establish call: missing peer information');
         }
         
-        // Socket handlers
-        socket.on("callAccepted", ({ accepterId, accepterPeerId }) => {
-          console.log("Call accepted by:", accepterId, "with peer ID:", accepterPeerId);
-          
-          // If we get an accepter peer ID, update our stored data
-          if (accepterPeerId) {
-            setCallData(prev => ({
-              ...prev,
-              friendPeerId: accepterPeerId
-            }));
+        // Check if connection is established after a timeout
+        setTimeout(() => {
+          if (!connectionEstablished && !callClosed) {
+            console.log(`No connection established after 10 seconds on attempt ${attemptCount}`);
+            if (attemptCount < 3) {
+              // Retry with a different approach
+              peer.destroy();
+              socketRef.current?.disconnect();
+              
+              console.log(`Retrying with different configuration (attempt ${attemptCount + 1})`);
+              setTimeout(() => {
+                if (!callClosed) {
+                  setupPeerConnection(storedData, userMediaStream);
+                }
+              }, 1000);
+            } else {
+              setError('Could not establish a connection after multiple attempts. Please try again later.');
+            }
           }
-        });
-        
-        socket.on("callEnded", () => {
-          console.log("Call ended by the other user");
-          setCallClosed(true);
-          handleEndCall();
-        });
-        
-        socket.on("callRejected", () => {
-          console.log("Call was rejected by the recipient");
-          setCallClosed(true);
-          handleEndCall();
-        });
+        }, 10000);
       });
       
-      // Set up peer error handler
+      // Handle peer error
       peer.on('error', (err) => {
         console.error('Peer connection error:', err);
         
-        // Map error types to user-friendly messages
         let errorMessage;
         switch (err.type) {
-          case 'server-error':
-            errorMessage = `Server connection error (attempt ${attemptCount}/3)`;
-            break;
-          case 'network':
-            errorMessage = 'Network connection error. Please check your internet connection.';
-            break;
           case 'peer-unavailable':
             errorMessage = 'Your friend appears to be offline or unavailable.';
             break;
@@ -255,28 +288,31 @@ const VideoCall = () => {
             errorMessage = 'Your browser may not fully support video calls. Try using Chrome or Firefox.';
             break;
           default:
-            errorMessage = `Connection error: ${err.type}`;
+            errorMessage = `Connection error (${err.type}). Retrying with a different approach...`;
         }
         
         setError(errorMessage);
         
-        // Retry connection for certain errors
-        const retryableErrors = ['server-error', 'network', 'socket-error', 'socket-closed'];
-        
-        if (retryableErrors.includes(err.type) && attemptCount < 3) {
-          console.log(`Retrying peer connection after ${err.type} error... (attempt ${attemptCount + 1})`);
+        // Always retry for any error with PeerJS
+        if (attemptCount < 3 && !callClosed) {
+          console.log(`Retrying with different configuration after error (attempt ${attemptCount + 1})`);
+          
+          // Destroy the current peer and retry with a different configuration
+          if (peer) peer.destroy();
+          
           setTimeout(() => {
             if (!callClosed) {
               setupPeerConnection(storedData, userMediaStream);
             }
-          }, 3000);
+          }, 1000);
         }
       });
+      
     } catch (err) {
-      console.error('Error setting up peer connection:', err);
+      console.error('Error in setupPeerConnection:', err);
       setError(`Failed to set up connection: ${err.message}`);
     }
-  }, [callType, socketUrl, userId, handleEndCall, callClosed]);
+  }, [callType, socketUrl, userId, friendSlug, handleEndCall, callClosed]);
   
   // Main setup effect
   useEffect(() => {

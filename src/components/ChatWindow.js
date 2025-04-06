@@ -31,7 +31,29 @@ const ChatWindow = ({ friendSlug }) => {
   const sentMessagesRef = useRef(new Set());
 
   useEffect(() => {
-    socket.current = io(url);
+    // Initialize socket with explicit debug options
+    socket.current = io(url, {
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000
+    });
+    
+    // Socket connection event handlers
+    socket.current.on('connect', () => {
+      console.log('Socket connected successfully with ID:', socket.current.id);
+    });
+    
+    socket.current.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+    });
+    
+    socket.current.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+    });
+    
+    // Initialize PeerJS
     peer.current = new Peer();
 
     peer.current.on("open", async (id) => {
@@ -106,24 +128,61 @@ const ChatWindow = ({ friendSlug }) => {
     // Also join personal room to catch direct messages
     socket.current.emit("joinChat", { room: `${userId}` });
 
+    // Custom socket handlers for direct peer connection
+    socket.current.on("peerSignal", (data) => {
+      console.log("Received peer signal:", data);
+      // This will be handled by the VideoCall component
+    });
+    
+    socket.current.on("updatePeerId", (data) => {
+      console.log("Received peer ID update:", data);
+      if (data.friendId === friendId) {
+        setFriendPeerId(data.peerId);
+      }
+    });
+
     // Listen for Incoming Calls
-    socket.current.on("incomingCall", ({ callerId, callerName, callerPeerId, callType }) => {
+    socket.current.on("incomingCall", ({ callerId, callerName, callerPeerId, callType, friendId, friendSlug }) => {
       console.log("Incoming call received from:", callerId, "with type:", callType);
-      // This is just a notification about an incoming call, not the actual call object
-      setIncomingCall({
-        type: 'socket',
-        callerId: callerId,
-        callerName: callerName,
-        callerPeerId: callerPeerId,
-        callObject: null,
-        callType: callType || 'video' // Use the received call type with fallback
-      });
+      
+      // Check if we're the intended recipient (using id or slug)
+      const isForMe = 
+        friendId === userId || 
+        (friendSlug && friendSlug === window.location.pathname.split('/').pop());
+      
+      if (isForMe || (!friendId && !friendSlug)) {
+        console.log("This incoming call is for me, showing notification");
+        
+        // This is just a notification about an incoming call, not the actual call object
+        setIncomingCall({
+          type: 'socket',
+          callerId: callerId,
+          callerName: callerName,
+          callerPeerId: callerPeerId,
+          callObject: null,
+          callType: callType || 'video' // Use the received call type with fallback
+        });
+      } else {
+        console.log("Incoming call not meant for me, ignoring");
+      }
     });
     
     // Listen for Call Accepted (for the caller)
-    socket.current.on("callAccepted", ({ accepterId }) => {
-      console.log("Call accepted by:", accepterId);
+    socket.current.on("callAccepted", ({ accepterId, accepterPeerId }) => {
+      console.log("Call accepted by:", accepterId, "with peer ID:", accepterPeerId);
       // We'll handle navigation to call page elsewhere
+      
+      // Update the accepted call data in session storage
+      try {
+        const storedCallDataStr = sessionStorage.getItem('callData');
+        if (storedCallDataStr) {
+          const storedCallData = JSON.parse(storedCallDataStr);
+          storedCallData.friendPeerId = accepterPeerId;
+          sessionStorage.setItem('callData', JSON.stringify(storedCallData));
+        }
+      } catch (err) {
+        console.error("Error updating call data with accepter peer ID:", err);
+      }
     });
     
     // Listen for Call Ended
@@ -206,6 +265,72 @@ const ChatWindow = ({ friendSlug }) => {
       }
     });
 
+    // Listen for global call announcements - this is the most reliable method
+    socket.current.on("globalCallAnnouncement", (data) => {
+      console.log("Received global call announcement:", data);
+      
+      // Check if this call is for us (using either ID or slug for maximum compatibility)
+      const isForMe = 
+        data.targetId === userId || 
+        (data.targetSlug && friendSlug && data.targetSlug === friendSlug);
+      
+      if (isForMe) {
+        console.log("This call is for me! Showing incoming call UI...");
+        
+        // Show incoming call notification with full data
+        setIncomingCall({
+          type: 'socket',
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callObject: null,
+          callType: data.callType || 'video',
+          timestamp: data.timestamp
+        });
+        
+        // Also play a sound if needed
+        try {
+          const audio = new Audio('/call-ring.mp3');
+          audio.play().catch(e => console.log("Could not play notification sound:", e));
+        } catch (e) {
+          console.log("Error playing notification sound:", e);
+        }
+      } else {
+        console.log("This call is not for me, ignoring.", 
+          `Expected ID: ${userId} or slug: ${friendSlug}, got targetId: ${data.targetId}, targetSlug: ${data.targetSlug}`);
+      }
+    });
+
+    // Listen for broadcast calls (backup method)
+    socket.current.on("broadcastCall", (data) => {
+      console.log("Received broadcast call:", data);
+      
+      // Only handle if we're the intended recipient by ID or slug
+      const isForMe = 
+        data.friendId === userId || 
+        (data.friendSlug && friendSlug && 
+         (data.friendSlug === friendSlug || friendSlug.includes(data.friendSlug) || data.friendSlug.includes(friendSlug)));
+      
+      if (isForMe) {
+        console.log("I'm the intended recipient of this broadcast call!");
+        
+        // If we don't already have an incoming call, set it
+        if (!incomingCall) {
+          setIncomingCall({
+            type: 'socket',
+            callerId: data.callerId,
+            callerName: data.callerName,
+            callerPeerId: data.callerPeerId,
+            callObject: null,
+            callType: data.callType || 'video'
+          });
+        }
+      } else {
+        console.log("Broadcast call not for me, ignoring.", 
+          `Expected ID: ${userId} or slug: ${friendSlug}, got friendId: ${data.friendId}, friendSlug: ${data.friendSlug}`);
+      }
+    });
+
     return () => {
       if (directRoom) {
         socket.current.emit("leaveChat", { room: directRoom });
@@ -214,8 +339,12 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current.off("incomingCall");
       socket.current.off("callEnded");
       socket.current.off("callRejected");
+      socket.current.off("broadcastCall");
+      socket.current.off("peerSignal");
+      socket.current.off("updatePeerId");
+      socket.current.off("globalCallAnnouncement");
     };
-  }, [friendId, userId, endCall, activeCall, incomingCall]);
+  }, [friendId, userId, endCall, activeCall, incomingCall, friendSlug]);
 
   useEffect(() => {
     const fetchFriendData = async () => {
@@ -321,10 +450,10 @@ const ChatWindow = ({ friendSlug }) => {
   }, [messages]);
 
   const startCall = async (friendId, friendPeerId, friendName, callType = 'video') => {
-    console.log(`Starting ${callType} call with ${friendName} (ID: ${friendId}, PeerID: ${friendPeerId})`);
+    console.log(`Starting ${callType} call with ${friendName} (ID: ${friendId}, Slug: ${friendSlug})`);
     
-    if (!friendPeerId) {
-      alert("This user is currently offline. You can only call users who are online.");
+    if (!socket.current) {
+      alert("Cannot start call: socket connection not available");
       return;
     }
     
@@ -333,6 +462,7 @@ const ChatWindow = ({ friendSlug }) => {
       setActiveCall({
         isActive: true,
         friendId: friendId,
+        friendSlug: friendSlug,
         friendName: friendName,
         type: callType
       });
@@ -349,16 +479,62 @@ const ChatWindow = ({ friendSlug }) => {
       
       // IMPORTANT: Notify the friend about incoming call via socket
       if (socket.current) {
-        console.log(`Emitting incomingCall event to user ${friendId}`);
+        console.log(`Emitting call notification to ${friendName} (ID: ${friendId}, Slug: ${friendSlug})`);
         
-        // This format matches what the receiving end expects in the incomingCall handler
+        // SOLUTION 1: Emit to ALL online users with filtering - most reliable method
+        socket.current.emit("globalCallAnnouncement", {
+          callerId: userId,
+          callerName: getUser()?.name || 'User',
+          callerPeerId: peer.current.id,
+          targetId: friendId,
+          targetSlug: friendSlug,
+          callType: callType,
+          timestamp: Date.now() // Add timestamp to identify this specific call
+        });
+        
+        // SOLUTION 2: Emit directly to friend's personal room
         socket.current.emit("incomingCall", {
           callerId: userId,
           callerName: getUser()?.name || 'User',
           callerPeerId: peer.current.id,
           friendId: friendId,
+          friendSlug: friendSlug,
+          callType: callType,
+          targetRoom: `${friendId}`,
+          targetUserId: friendId
+        });
+        
+        // SOLUTION 3: Emit to the shared room
+        const directRoom = `room-${userId}-${friendId}`;
+        socket.current.emit("incomingCall", {
+          callerId: userId,
+          callerName: getUser()?.name || 'User',
+          callerPeerId: peer.current.id,
+          friendId: friendId, 
+          friendSlug: friendSlug,
+          callType: callType,
+          targetRoom: directRoom
+        });
+        
+        // SOLUTION 4: Use dedicated broadcast method
+        socket.current.emit("broadcastCall", {
+          callerId: userId,
+          callerName: getUser()?.name || 'User',
+          callerPeerId: peer.current.id,
+          friendId: friendId,
+          friendSlug: friendSlug,
           callType: callType
         });
+        
+        // Let's also emit a specific event for direct peer-to-peer communication
+        if (peer.current && peer.current.id) {
+          socket.current.emit("peerSignal", {
+            signal: { type: 'call-intent', callType },
+            senderPeerId: peer.current.id,
+            targetUserId: friendId,
+            targetSlug: friendSlug
+          });
+        }
       } else {
         console.error("Socket not available, cannot notify friend about call");
         throw new Error("Socket connection not available");
@@ -367,17 +543,19 @@ const ChatWindow = ({ friendSlug }) => {
       // Save call data in sessionStorage for the video call page
       const callData = {
         friendId: friendId,
+        friendSlug: friendSlug,
         friendName: friendName,
         friendPeerId: friendPeerId,
         callType: callType,
-        isInitiator: true
+        isInitiator: true,
+        callerPeerId: peer.current?.id
       };
       
       // Store call data in sessionStorage
       sessionStorage.setItem('callData', JSON.stringify(callData));
       
-      // Navigate to video call page
-      window.location.href = `/call/${friendId}?callType=${callType}&friendName=${encodeURIComponent(friendName)}`;
+      // Navigate to video call page - IMPORTANT: Use friendSlug not friendId
+      window.location.href = `/call/${friendSlug}?callType=${callType}&friendName=${encodeURIComponent(friendName)}`;
     } catch (err) {
       console.error('Error starting call:', err);
       alert(`Could not start call: ${err.message}`);
@@ -404,13 +582,22 @@ const ChatWindow = ({ friendSlug }) => {
       await navigator.mediaDevices.getUserMedia(mediaConstraints);
       console.log(`Got local media stream for ${incomingCall.callType} call`);
       
+      // Get our peer ID to share with the caller
+      const myPeerId = peer.current?.id;
+      
+      // Get the caller's slug - either from incomingCall or the current route
+      const callerSlug = incomingCall.callerSlug || window.location.pathname.split('/').pop();
+      
       // Save call data in sessionStorage
       const callData = {
         friendId: incomingCall.callerId,
+        friendSlug: callerSlug,
         friendName: incomingCall.callerName || friendName, // Use friendName as fallback
         friendPeerId: incomingCall.callerPeerId,
         callType: incomingCall.callType,
-        isInitiator: false
+        isInitiator: false,
+        callerPeerId: incomingCall.callerPeerId,
+        accepterPeerId: myPeerId
       };
       
       console.log("Call data for acceptance:", callData);
@@ -424,8 +611,18 @@ const ChatWindow = ({ friendSlug }) => {
         socket.current.emit('callAccepted', {
           callerId: incomingCall.callerId,
           accepterId: userId,
-          accepterPeerId: peer.current?.id
+          accepterPeerId: myPeerId,
+          accepterSlug: friendSlug // Send our slug back
         });
+        
+        // Also send direct peer signal if we have peer IDs
+        if (myPeerId && incomingCall.callerPeerId) {
+          socket.current.emit('peerSignal', {
+            signal: { type: 'accept-call', callType: incomingCall.callType },
+            senderPeerId: myPeerId,
+            targetPeerId: incomingCall.callerPeerId
+          });
+        }
       } else {
         console.error("Socket not available, cannot notify caller");
       }
@@ -436,8 +633,9 @@ const ChatWindow = ({ friendSlug }) => {
         // The VideoCall component will handle answering this call
       }
       
-      // Navigate to video call page
-      window.location.href = `/call/${incomingCall.callerId}?callType=${incomingCall.callType}&friendName=${encodeURIComponent(callData.friendName)}`;
+      // Navigate to video call page using the caller's slug or ID as fallback
+      const callDestination = callerSlug || incomingCall.callerId;
+      window.location.href = `/call/${callDestination}?callType=${incomingCall.callType}&friendName=${encodeURIComponent(callData.friendName)}`;
     } catch (err) {
       console.error('Error accepting call:', err);
       alert(`Could not accept call: ${err.message}`);
