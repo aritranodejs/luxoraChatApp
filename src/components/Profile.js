@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getUser } from "../utils/authHelper";
+import { getUser, getAuthToken } from "../utils/authHelper";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "react-bootstrap";
 import { getFriendRequests, acceptOrRejectRequest } from "../services/friendService";
@@ -95,8 +95,22 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
 
         // Initialize socket connection after user data is fetched
         if (userData?.data?.id) {
+          // Handle online status updates safely
+          const updateOnlineStatusSafely = async (isOnline) => {
+            try {
+              if (userData?.data?.id) {
+                const result = await updateUserOnlineStatus(userData.data.id, isOnline);
+                if (!result.success) {
+                  console.warn(`Failed to update online status to ${isOnline}:`, result.error);
+                }
+              }
+            } catch (error) {
+              console.warn("Error in online status update:", error);
+            }
+          };
+          
           // Update online status on connection
-          updateUserOnlineStatus(userData.data.id, true);
+          updateOnlineStatusSafely(true);
 
           // Listen for friend requests
           socket.current.on('friendRequests', (data) => {
@@ -116,18 +130,66 @@ const Profile = ({ isDarkMode, toggleTheme }) => {
           const handleVisibilityChange = () => {
             if (document.hidden) {
               if (socket.current && socket.current.connected) {
-                updateUserOnlineStatus(userData?.data?.id, false);  // Set to offline immediately
+                updateOnlineStatusSafely(false);  // Set to offline safely
               }
             } else {
               if (socket.current && socket.current.connected) {
-                updateUserOnlineStatus(userData?.data?.id, true);  // Set to online immediately
+                updateOnlineStatusSafely(true);  // Set to online safely
               }
             }
           };
 
           const handleBeforeUnload = () => {
-            if (socket.current && socket.current.connected) {
-              updateUserOnlineStatus(userData?.data?.id, false);  // User closed browser
+            if (socket.current && socket.current.connected && userData?.data?.id) {
+              // Try multiple approaches to ensure offline status is recorded
+              
+              // 1. Try using sendBeacon (most reliable for beforeunload)
+              try {
+                const API_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+                const beaconData = new Blob(
+                  [JSON.stringify({ 
+                    userId: userData.data.id, 
+                    isOnline: false 
+                  })], 
+                  { type: 'application/json' }
+                );
+                
+                const headers = new Headers();
+                headers.append('Authorization', `Bearer ${getAuthToken()}`);
+                
+                navigator.sendBeacon(
+                  `${API_URL}/user/update-online-status`,
+                  beaconData
+                );
+              } catch (e) {
+                console.warn("Failed to send offline beacon:", e);
+                
+                // 2. Fallback: Try with fetch + keepalive
+                try {
+                  const API_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+                  fetch(`${API_URL}/user/update-online-status`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${getAuthToken()}`
+                    },
+                    body: JSON.stringify({ 
+                      userId: userData.data.id, 
+                      isOnline: false 
+                    }),
+                    keepalive: true // This helps the request complete even during page unload
+                  }).catch(e => console.warn("Keepalive fetch also failed:", e));
+                } catch (e) {
+                  console.warn("All offline notification methods failed:", e);
+                }
+              }
+              
+              // 3. Also try to notify via socket (least reliable during unload)
+              try {
+                socket.current.emit('userOffline', { userId: userData.data.id });
+              } catch (e) {
+                // Don't log, as socket might already be closing
+              }
             }
           };
 

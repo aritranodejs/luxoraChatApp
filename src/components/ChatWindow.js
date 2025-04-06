@@ -6,6 +6,7 @@ import { updatePeerId, getFriend } from "../services/friendService";
 import { getUser } from "../utils/authHelper";
 import { getChats, sendMessages } from "../services/chatService"; // ✅ Import chat API functions
 import "../styles/ChatWindow.css"; // Import the CSS file
+import * as callHelper from "../utils/callHelper"; // Import call helper utilities
 
 const ChatWindow = ({ friendSlug }) => {
   const [messages, setMessages] = useState([]);
@@ -34,15 +35,25 @@ const ChatWindow = ({ friendSlug }) => {
     // Initialize socket with explicit debug options
     socket.current = io(url, {
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 8,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 20000
+      timeout: 20000,
+      transports: ['websocket', 'polling'] // Try websocket first, fall back to polling
     });
+    
+    // Make socket available globally for other components
+    window.socket = socket.current;
     
     // Socket connection event handlers
     socket.current.on('connect', () => {
       console.log('Socket connected successfully with ID:', socket.current.id);
+      
+      // Re-emit userId on reconnect to ensure server knows who we are
+      if (userId) {
+        socket.current.emit("userId", userId);
+        console.log("Re-emitted userId on socket connect:", userId);
+      }
     });
     
     socket.current.on('connect_error', (error) => {
@@ -51,15 +62,64 @@ const ChatWindow = ({ friendSlug }) => {
     
     socket.current.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
+      
+      // Attempt to reconnect immediately for crucial signaling
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        console.log('Attempting manual reconnection...');
+        socket.current.connect();
+      }
     });
     
-    // Initialize PeerJS
-    peer.current = new Peer();
-
-    peer.current.on("open", async (id) => {
+    // Initialize PeerJS with more reliable options
+    peer.current = new Peer({
+      debug: 3, // Enable debugging
+      config: {
+        'iceServers': [
+          // Multiple STUN servers
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          // Free TURN servers
+          {
+            urls: [
+              'turn:openrelay.metered.ca:80',
+              'turn:openrelay.metered.ca:443',
+              'turn:openrelay.metered.ca:443?transport=tcp'
+            ],
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
+        ]
+      }
+    });
+    
+    // Debug PeerJS events
+    peer.current.on('open', async (id) => {
+      console.log('PeerJS successfully connected with ID:', id);
       const response = await updatePeerId(friendSlug, id);
       setFriendId(response?.data?.id);
+      
+      // Send our userId to the socket server
       socket.current.emit("userId", userId);
+      
+      // Announce that I'm available to receive calls
+      socket.current.emit("userAvailable", {
+        userId,
+        friendSlug,
+        peerId: id,
+        currentChat: window.location.pathname
+      });
+      
+      console.log(`Announced availability with peer ID: ${id}`);
+      
+      // Send a ping every 30 seconds to keep the socket alive
+      const keepAliveInterval = setInterval(() => {
+        if (socket.current && socket.current.connected) {
+          socket.current.emit("ping", { userId, timestamp: Date.now() });
+        }
+      }, 30000);
+      
+      // Clean up interval on component unmount
+      return () => clearInterval(keepAliveInterval);
     });
 
     // Handle incoming calls from PeerJS
@@ -145,7 +205,13 @@ const ChatWindow = ({ friendSlug }) => {
     socket.current.on("incomingCall", ({ callerId, callerName, callerPeerId, callType, friendId, friendSlug }) => {
       console.log("Incoming call received from:", callerId, "with type:", callType);
       
-      // Check if we're the intended recipient (using id or slug)
+      // Skip if this is my own call (I'm the caller)
+      if (callerId === userId) {
+        console.log("This is my own call, ignoring");
+        return;
+      }
+      
+      // Check if we're the intended recipient
       const isForMe = 
         friendId === userId || 
         (friendSlug && friendSlug === window.location.pathname.split('/').pop());
@@ -153,17 +219,32 @@ const ChatWindow = ({ friendSlug }) => {
       if (isForMe || (!friendId && !friendSlug)) {
         console.log("This incoming call is for me, showing notification");
         
-        // This is just a notification about an incoming call, not the actual call object
+        // Save to localStorage for reliability
+        callHelper.saveIncomingCall({
+          callerId, 
+          callerName, 
+          callerPeerId, 
+          callType: callType || 'video',
+          timestamp: Date.now()
+        });
+        
+        // Show notification
         setIncomingCall({
           type: 'socket',
           callerId: callerId,
           callerName: callerName,
           callerPeerId: callerPeerId,
           callObject: null,
-          callType: callType || 'video' // Use the received call type with fallback
+          callType: callType || 'video'
         });
-      } else {
-        console.log("Incoming call not meant for me, ignoring");
+        
+        // Broadcast to other tabs
+        callHelper.broadcastIncomingCall({
+          callerId, 
+          callerName, 
+          callerPeerId, 
+          callType: callType || 'video'
+        });
       }
     });
     
@@ -220,7 +301,7 @@ const ChatWindow = ({ friendSlug }) => {
       console.log("📩 Received message via socket:", data);
       // Extract data using the correct field names from backend
       const { senderId, receiverId, message } = data;
-      const messageContent = message; // Backend sends 'message' property
+      const messageContent = message || data.message || data.content || data.text || ""; // Be flexible with field names
       
       if (!messageContent) {
         console.log("📩 Received empty message, ignoring");
@@ -228,31 +309,41 @@ const ChatWindow = ({ friendSlug }) => {
       }
 
       // Skip this message if it's from us and we just sent it (to avoid duplicates)
+      // IMPORTANT: We need to be careful not to filter out legitimate messages
       if (String(senderId) === String(userId) && sentMessagesRef.current.has(messageContent)) {
         console.log("📩 Skipping locally sent message received from socket:", messageContent);
         return;
       }
       
-      // Accept messages meant for this user (either as sender or receiver)
-      if (receiverId === userId || senderId === userId) {
-        console.log(`📩 Message is for me! senderId=${senderId}, receiverId=${receiverId}, userId=${userId}`);
+      // Always update messages if the message is related to the current chat
+      if ((receiverId === userId && senderId === friendId) || 
+          (senderId === userId && receiverId === friendId)) {
+        console.log(`📩 Message is relevant to current chat: senderId=${senderId}, receiverId=${receiverId}, userId=${userId}, friendId=${friendId}`);
+        
+        // Unique ID for the message
+        const messageId = data.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        
         setMessages(prevMessages => {
           // Create message with timestamp
           const newMessage = { 
+            id: messageId,
             senderId, 
             receiverId, 
             text: messageContent, // Store as text for UI consistency
-            timestamp: new Date().toISOString() // Use current time as socket doesn't provide timestamp
+            timestamp: data.timestamp || data.createdAt || new Date().toISOString()
           };
           
-          // Prevent duplicate messages by checking content and IDs
-          const messageExists = prevMessages.some(
-            msg => (msg.text === messageContent) && 
-                  String(msg.senderId) === String(senderId) && 
-                  String(msg.receiverId) === String(receiverId)
+          // Check if this exact message already exists to prevent duplicates
+          const isDuplicate = prevMessages.some(msg => 
+            (msg.id && msg.id === messageId) || // Match by ID if available
+            ((msg.text === messageContent) && // Or by content
+             String(msg.senderId) === String(senderId) && 
+             String(msg.receiverId) === String(receiverId) &&
+             // If timestamps are close enough (within 2 seconds), consider it a duplicate
+             (msg.timestamp && Math.abs(new Date(msg.timestamp) - new Date(newMessage.timestamp)) < 2000))
           );
           
-          if (messageExists) {
+          if (isDuplicate) {
             console.log("📩 Message already exists, not adding duplicate");
             return prevMessages;
           }
@@ -261,7 +352,69 @@ const ChatWindow = ({ friendSlug }) => {
           return [...prevMessages, newMessage];
         });
       } else {
-        console.log(`📩 Message is not for me. senderId=${senderId}, receiverId=${receiverId}, userId=${userId}`);
+        console.log(`📩 Message is not for current chat. senderId=${senderId}, receiverId=${receiverId}, userId=${userId}, friendId=${friendId}`);
+      }
+    });
+
+    // Listen for direct emergency calls - this should work regardless of rooms
+    socket.current.on("emergencyDirectCall", (data) => {
+      console.log("⚠️ EMERGENCY CALL RECEIVED:", data);
+      
+      // IMPORTANT: Ignore calls that I initiated myself
+      if (data.callerId === userId) {
+        console.log("⚠️ This is my own call, ignoring");
+        return;
+      }
+      
+      // Determine if this call is for me
+      const recipientMatches = [
+        { type: "ID Match", value: data.targetId === userId },
+        { type: "Slug Exact Match", value: data.targetSlug === friendSlug },
+        { type: "Caller ID Reversal", value: data.callerId === friendId }
+      ];
+      
+      console.log("⚠️ EMERGENCY CALL RECIPIENT MATCHING:", recipientMatches);
+      
+      // Accept the call if ANY matching criteria is true
+      const isForMe = recipientMatches.some(match => match.value === true);
+      
+      if (isForMe) {
+        console.log("⚠️ EMERGENCY CALL IS FOR ME - SHOWING NOTIFICATION");
+        
+        // Save to localStorage for reliability
+        callHelper.saveIncomingCall({
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callType: data.callType || 'video',
+          timestamp: data.timestamp,
+          isEmergency: true
+        });
+        
+        // Show notification
+        setIncomingCall({
+          type: 'socket',
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callerSlug: data.callerSlug,
+          callObject: null,
+          callType: data.callType || 'video',
+          timestamp: data.timestamp,
+          isEmergency: true
+        });
+        
+        // Play sound
+        callHelper.playCallSound();
+        
+        // Broadcast to other tabs
+        callHelper.broadcastIncomingCall({
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callType: data.callType || 'video',
+          isEmergency: true
+        });
       }
     });
 
@@ -269,7 +422,13 @@ const ChatWindow = ({ friendSlug }) => {
     socket.current.on("globalCallAnnouncement", (data) => {
       console.log("Received global call announcement:", data);
       
-      // Check if this call is for us (using either ID or slug for maximum compatibility)
+      // Ignore calls that I initiated
+      if (data.callerId === userId) {
+        console.log("This is my own call, ignoring");
+        return;
+      }
+      
+      // Check if this call is for us
       const isForMe = 
         data.targetId === userId || 
         (data.targetSlug && friendSlug && data.targetSlug === friendSlug);
@@ -277,7 +436,16 @@ const ChatWindow = ({ friendSlug }) => {
       if (isForMe) {
         console.log("This call is for me! Showing incoming call UI...");
         
-        // Show incoming call notification with full data
+        // Save to localStorage for reliability
+        callHelper.saveIncomingCall({
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callType: data.callType || 'video',
+          timestamp: data.timestamp
+        });
+        
+        // Show notification
         setIncomingCall({
           type: 'socket',
           callerId: data.callerId,
@@ -288,16 +456,16 @@ const ChatWindow = ({ friendSlug }) => {
           timestamp: data.timestamp
         });
         
-        // Also play a sound if needed
-        try {
-          const audio = new Audio('/call-ring.mp3');
-          audio.play().catch(e => console.log("Could not play notification sound:", e));
-        } catch (e) {
-          console.log("Error playing notification sound:", e);
-        }
-      } else {
-        console.log("This call is not for me, ignoring.", 
-          `Expected ID: ${userId} or slug: ${friendSlug}, got targetId: ${data.targetId}, targetSlug: ${data.targetSlug}`);
+        // Play sound
+        callHelper.playCallSound();
+        
+        // Broadcast to other tabs
+        callHelper.broadcastIncomingCall({
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callType: data.callType || 'video'
+        });
       }
     });
 
@@ -305,16 +473,30 @@ const ChatWindow = ({ friendSlug }) => {
     socket.current.on("broadcastCall", (data) => {
       console.log("Received broadcast call:", data);
       
-      // Only handle if we're the intended recipient by ID or slug
+      // Ignore calls that I initiated
+      if (data.callerId === userId) {
+        console.log("This is my own broadcast call, ignoring");
+        return;
+      }
+      
+      // Only handle if we're the intended recipient
       const isForMe = 
         data.friendId === userId || 
         (data.friendSlug && friendSlug && 
-         (data.friendSlug === friendSlug || friendSlug.includes(data.friendSlug) || data.friendSlug.includes(friendSlug)));
+         (data.friendSlug === friendSlug || friendSlug.includes(data.friendSlug)));
       
       if (isForMe) {
         console.log("I'm the intended recipient of this broadcast call!");
         
-        // If we don't already have an incoming call, set it
+        // Save to localStorage for reliability
+        callHelper.saveIncomingCall({
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callType: data.callType || 'video'
+        });
+        
+        // Show notification if we don't already have one
         if (!incomingCall) {
           setIncomingCall({
             type: 'socket',
@@ -324,10 +506,44 @@ const ChatWindow = ({ friendSlug }) => {
             callObject: null,
             callType: data.callType || 'video'
           });
+          
+          // Play sound
+          callHelper.playCallSound();
+          
+          // Broadcast to other tabs
+          callHelper.broadcastIncomingCall({
+            callerId: data.callerId,
+            callerName: data.callerName,
+            callerPeerId: data.callerPeerId,
+            callType: data.callType || 'video'
+          });
         }
-      } else {
-        console.log("Broadcast call not for me, ignoring.", 
-          `Expected ID: ${userId} or slug: ${friendSlug}, got friendId: ${data.friendId}, friendSlug: ${data.friendSlug}`);
+      }
+    });
+
+    // Also set up a polling mechanism to check for incoming calls
+    const pollInterval = setInterval(() => {
+      if (socket.current && userId && !incomingCall) {
+        console.log("Polling for missed calls...");
+        socket.current.emit("checkMissedCalls", {
+          userId,
+          friendId,
+          friendSlug
+        });
+      }
+    }, 5000); // Poll every 5 seconds
+
+    socket.current.on("missedCall", (data) => {
+      console.log("Missed call notification received:", data);
+      if (!incomingCall) {
+        setIncomingCall({
+          type: 'socket',
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerPeerId: data.callerPeerId,
+          callObject: null,
+          callType: data.callType || 'video'
+        });
       }
     });
 
@@ -343,6 +559,11 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current.off("peerSignal");
       socket.current.off("updatePeerId");
       socket.current.off("globalCallAnnouncement");
+      socket.current.off("emergencyDirectCall");
+      socket.current.off("missedCall");
+      
+      // Clear the polling interval
+      clearInterval(pollInterval);
     };
   }, [friendId, userId, endCall, activeCall, incomingCall, friendSlug]);
 
@@ -467,179 +688,160 @@ const ChatWindow = ({ friendSlug }) => {
         type: callType
       });
       
+      // Check if the friendPeerId is available
+      if (!friendPeerId) {
+        alert(`${friendName} appears to be offline. They will receive your call when they come online.`);
+      }
+      
       // Request media access
       const mediaConstraints = {
         audio: true,
         video: callType === 'video'
       };
       
-      // Get local media stream but we don't need to store it here
+      // Get local media stream 
       await navigator.mediaDevices.getUserMedia(mediaConstraints);
       console.log(`Got local media stream for ${callType} call`);
       
-      // IMPORTANT: Notify the friend about incoming call via socket
-      if (socket.current) {
-        console.log(`Emitting call notification to ${friendName} (ID: ${friendId}, Slug: ${friendSlug})`);
-        
-        // SOLUTION 1: Emit to ALL online users with filtering - most reliable method
-        socket.current.emit("globalCallAnnouncement", {
-          callerId: userId,
-          callerName: getUser()?.name || 'User',
-          callerPeerId: peer.current.id,
-          targetId: friendId,
-          targetSlug: friendSlug,
-          callType: callType,
-          timestamp: Date.now() // Add timestamp to identify this specific call
-        });
-        
-        // SOLUTION 2: Emit directly to friend's personal room
-        socket.current.emit("incomingCall", {
-          callerId: userId,
-          callerName: getUser()?.name || 'User',
-          callerPeerId: peer.current.id,
-          friendId: friendId,
-          friendSlug: friendSlug,
-          callType: callType,
-          targetRoom: `${friendId}`,
-          targetUserId: friendId
-        });
-        
-        // SOLUTION 3: Emit to the shared room
-        const directRoom = `room-${userId}-${friendId}`;
-        socket.current.emit("incomingCall", {
-          callerId: userId,
-          callerName: getUser()?.name || 'User',
-          callerPeerId: peer.current.id,
-          friendId: friendId, 
-          friendSlug: friendSlug,
-          callType: callType,
-          targetRoom: directRoom
-        });
-        
-        // SOLUTION 4: Use dedicated broadcast method
-        socket.current.emit("broadcastCall", {
-          callerId: userId,
-          callerName: getUser()?.name || 'User',
-          callerPeerId: peer.current.id,
-          friendId: friendId,
-          friendSlug: friendSlug,
-          callType: callType
-        });
-        
-        // Let's also emit a specific event for direct peer-to-peer communication
-        if (peer.current && peer.current.id) {
-          socket.current.emit("peerSignal", {
-            signal: { type: 'call-intent', callType },
-            senderPeerId: peer.current.id,
-            targetUserId: friendId,
-            targetSlug: friendSlug
-          });
-        }
-      } else {
-        console.error("Socket not available, cannot notify friend about call");
-        throw new Error("Socket connection not available");
-      }
-      
-      // Save call data in sessionStorage for the video call page
+      // Prepare call data
       const callData = {
+        callerId: userId,
+        callerName: getUser()?.name || 'User',
+        callerPeerId: peer.current.id,
+        targetId: friendId,
+        targetSlug: friendSlug,
         friendId: friendId,
-        friendSlug: friendSlug,
         friendName: friendName,
+        friendSlug: friendSlug,
         friendPeerId: friendPeerId,
         callType: callType,
         isInitiator: true,
-        callerPeerId: peer.current?.id
+        timestamp: Date.now()
       };
       
-      // Store call data in sessionStorage
-      sessionStorage.setItem('callData', JSON.stringify(callData));
+      // Save outgoing call data using our helper utility
+      const saveSuccess = callHelper.saveOutgoingCall(callData);
       
-      // Navigate to video call page - IMPORTANT: Use friendSlug not friendId
-      window.location.href = `/call/${friendSlug}?callType=${callType}&friendName=${encodeURIComponent(friendName)}`;
+      if (!saveSuccess) {
+        console.error("Failed to save call data, saving directly to sessionStorage");
+        // Fallback: save directly to sessionStorage
+        sessionStorage.setItem('callData', JSON.stringify(callData));
+      }
+      
+      // Double-check that data was saved
+      const sessionCallData = sessionStorage.getItem('callData');
+      if (!sessionCallData || !saveSuccess) {
+        console.error("Critical error: Call data not saved properly. Trying again...");
+        // Try one more time with both methods
+        sessionStorage.setItem('callData', JSON.stringify(callData));
+        callHelper.saveOutgoingCall(callData); // Try helper again too
+      }
+      
+      // NOTIFY FRIEND: Use socket emission strategies for maximum reliability
+      if (socket.current) {
+        console.log("Sending call notifications through all available channels");
+        
+        // Primary Socket Notification Method - will be handled by server to notify the recipient
+        socket.current.emit("initiateCall", callData);
+        
+        // SOLUTION 1: Emit to ALL online users with filtering - most reliable method
+        socket.current.emit("globalCallAnnouncement", callData);
+        
+        // Send 3 times with delay to maximize chance of success
+        setTimeout(() => {
+          socket.current.emit("globalCallAnnouncement", {...callData, retry: 1});
+        }, 500);
+        
+        setTimeout(() => {
+          socket.current.emit("globalCallAnnouncement", {...callData, retry: 2});
+        }, 1500);
+        
+        // SOLUTION 2: Emergency direct call notification
+        socket.current.emit("emergencyDirectCall", callData);
+        
+        // SOLUTION 3: Use broadcast method as backup
+        socket.current.emit("broadcastCall", callData);
+        
+        // SOLUTION 4: Try direct socket-to-socket signaling (if recipient is connected)
+        socket.current.emit("directCallSignal", callData);
+        
+        // SOLUTION 5: Use REST API as additional fallback (handled by helper)
+        callHelper.notifyServerOfCall(callData);
+      }
+      
+      // Short delay to ensure the call data is saved before navigation
+      setTimeout(() => {
+        // Navigate to video call page with all needed parameters
+        window.location.href = `/call/${friendSlug}?callType=${callType}&friendName=${encodeURIComponent(friendName)}`;
+      }, 500); // Increase timeout to ensure notifications are sent
     } catch (err) {
       console.error('Error starting call:', err);
       alert(`Could not start call: ${err.message}`);
       setActiveCall({ isActive: false });
+      callHelper.clearOutgoingCall();
     }
   };
 
-  const acceptCall = async () => {
-    console.log("Accepting call from:", incomingCall);
+  // Function to accept incoming call
+  const acceptCall = () => {
+    console.log("Accepting call:", incomingCall);
     
     if (!incomingCall) {
-      console.error("No incoming call to accept");
+      console.error("No incoming call data found when accepting call");
       return;
     }
     
     try {
-      // Request media access
-      const mediaConstraints = {
-        audio: true,
-        video: incomingCall.callType === 'video'
-      };
+      // Try to play a sound to ensure audio context is activated
+      const audio = new Audio();
+      audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+      audio.play().catch(e => console.log("Could not play audio ping", e));
       
-      // Get local media stream but we don't need to store it here
-      await navigator.mediaDevices.getUserMedia(mediaConstraints);
-      console.log(`Got local media stream for ${incomingCall.callType} call`);
-      
-      // Get our peer ID to share with the caller
-      const myPeerId = peer.current?.id;
-      
-      // Get the caller's slug - either from incomingCall or the current route
-      const callerSlug = incomingCall.callerSlug || window.location.pathname.split('/').pop();
-      
-      // Save call data in sessionStorage
+      // Calling from the acceptCall UI - prepare call data
       const callData = {
-        friendId: incomingCall.callerId,
-        friendSlug: callerSlug,
-        friendName: incomingCall.callerName || friendName, // Use friendName as fallback
-        friendPeerId: incomingCall.callerPeerId,
-        callType: incomingCall.callType,
-        isInitiator: false,
+        callerId: incomingCall.callerId,
+        callerName: incomingCall.callerName,
         callerPeerId: incomingCall.callerPeerId,
-        accepterPeerId: myPeerId
+        callType: incomingCall.callType,
+        targetId: userId,
+        friendId: incomingCall.callerId,
+        friendName: incomingCall.callerName,
+        friendPeerId: incomingCall.callerPeerId,
+        isInitiator: false,
+        timestamp: Date.now()
       };
       
-      console.log("Call data for acceptance:", callData);
-      
-      // Store call data
+      // Save call data to session before navigation
       sessionStorage.setItem('callData', JSON.stringify(callData));
       
-      // Notify caller that call was accepted
+      // Also save in localStorage for reliability
+      const saveSuccess = callHelper.saveOutgoingCall(callData);
+      console.log("Call data saved successfully:", saveSuccess);
+      
+      // Let caller know we've accepted
       if (socket.current) {
-        console.log("Emitting callAccepted event to caller:", incomingCall.callerId);
-        socket.current.emit('callAccepted', {
+        socket.current.emit("callAccepted", {
           callerId: incomingCall.callerId,
           accepterId: userId,
-          accepterPeerId: myPeerId,
-          accepterSlug: friendSlug // Send our slug back
+          callerPeerId: incomingCall.callerPeerId,
+          callType: incomingCall.callType
         });
-        
-        // Also send direct peer signal if we have peer IDs
-        if (myPeerId && incomingCall.callerPeerId) {
-          socket.current.emit('peerSignal', {
-            signal: { type: 'accept-call', callType: incomingCall.callType },
-            senderPeerId: myPeerId,
-            targetPeerId: incomingCall.callerPeerId
-          });
-        }
-      } else {
-        console.error("Socket not available, cannot notify caller");
+        console.log("Emitted callAccepted event");
       }
       
-      // Handle PeerJS call if present
-      if (incomingCall.type === 'peerjs' && incomingCall.callObject) {
-        console.log("Found PeerJS call object, will answer in VideoCall component");
-        // The VideoCall component will handle answering this call
-      }
+      // Stop ringtone
+      callHelper.stopCallSound();
       
-      // Navigate to video call page using the caller's slug or ID as fallback
-      const callDestination = callerSlug || incomingCall.callerId;
-      window.location.href = `/call/${callDestination}?callType=${incomingCall.callType}&friendName=${encodeURIComponent(callData.friendName)}`;
-    } catch (err) {
-      console.error('Error accepting call:', err);
-      alert(`Could not accept call: ${err.message}`);
+      // Clear incoming call data since we're handling it now
+      callHelper.clearIncomingCall();
       setIncomingCall(null);
+      
+      // Navigate to call screen
+      console.log(`Navigating to /call/${friendSlug}?callType=${incomingCall.callType}&friendName=${encodeURIComponent(incomingCall.callerName)}`);
+      window.location.href = `/call/${friendSlug}?callType=${incomingCall.callType}&friendName=${encodeURIComponent(incomingCall.callerName)}`;
+    } catch (error) {
+      console.error("Error accepting call:", error);
+      alert("Could not accept call. Please try again.");
     }
   };
 
@@ -658,6 +860,9 @@ const ChatWindow = ({ friendSlug }) => {
     });
     
     setIncomingCall(null);
+
+    // Clear any stored call data
+    callHelper.clearIncomingCall();
   }, [incomingCall, friendSlug, userId]);
 
   // Send Chat Message
@@ -667,61 +872,87 @@ const ChatWindow = ({ friendSlug }) => {
         // Generate a temporary ID to track this message
         const tempId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         
+        // Create message object that will be consistent for both API and socket
+        const messageData = {
+          id: tempId,
+          senderId: userId,
+          receiverId: friendId,
+          text: input.trim(),
+          timestamp: new Date().toISOString(),
+          _locally_added: true // Mark as locally added
+        };
+        
         // Add to tracking set to prevent duplicate from socket
         sentMessagesRef.current.add(input.trim());
         
+        // Update UI immediately for better user experience
+        setMessages(prevMessages => [...prevMessages, messageData]);
+        
+        // Reset input field immediately for better UX
+        setInput("");
+        
         // First save message to database
-        const response = await sendMessages(friendSlug, input);
+        const response = await sendMessages(friendSlug, input.trim());
         console.log("📤 Message sent response:", response?.data);
         
         // Get the proper timestamp from the response
         let messageTimestamp = new Date().toISOString();
+        let messageId = tempId;
         
-        // Check different possible response formats for timestamp
-        if (response?.data?.data?.createdAt) {
-          messageTimestamp = response.data.data.createdAt;
-        } else if (response?.data?.createdAt) {
-          messageTimestamp = response.data.createdAt;
-        } else if (response?.data?.data?.timestamp) {
-          messageTimestamp = response.data.data.timestamp;
-        } else if (response?.data?.timestamp) {
-          messageTimestamp = response.data.timestamp;
+        // Extract proper data from response
+        if (response?.data) {
+          if (response.data.id) messageId = response.data.id;
+          else if (response.data.data?.id) messageId = response.data.data.id;
+          
+          if (response.data.createdAt) messageTimestamp = response.data.createdAt;
+          else if (response.data.data?.createdAt) messageTimestamp = response.data.data.createdAt;
+          else if (response.data.timestamp) messageTimestamp = response.data.timestamp;
+          else if (response.data.data?.timestamp) messageTimestamp = response.data.data.timestamp;
         }
         
-        console.log("📤 Using timestamp for new message:", messageTimestamp);
+        console.log("📤 Using ID and timestamp for message:", messageId, messageTimestamp);
         
-        // Create message with proper timestamp
-        const newMessage = {
-          id: tempId, // Add unique ID
-          senderId: userId,
-          receiverId: friendId,
-          text: input,
-          timestamp: messageTimestamp,
-          _locally_added: true // Mark as locally added
-        };
-
-        // Update UI immediately (for sender)
-        setMessages(prevMessages => [...prevMessages, newMessage]);
-
+        // Update the message with the proper ID and timestamp from the server
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg.id === tempId 
+              ? { 
+                  ...msg, 
+                  id: messageId, 
+                  timestamp: messageTimestamp,
+                  _locally_added: false
+                } 
+              : msg
+          )
+        );
+        
         // Send to direct rooms to ensure delivery
         if (socket.current) {
-          // Create the exact same room name as backend uses
-          const roomName = `room-${userId}-${friendId}`;
+          // Send to multiple possible room formats to ensure delivery
+          const possibleRooms = [
+            `room-${userId}-${friendId}`,
+            `room-${friendId}-${userId}`,
+            `${friendId}` // Direct to user
+          ];
           
-          console.log(`📤 Emitting message to room: ${roomName}`);
+          for (const room of possibleRooms) {
+            console.log(`📤 Emitting message to room: ${room}`);
+            
+            // Send to the room with all possible formats
+            socket.current.emit("sendMessage", {
+              id: messageId,
+              senderId: userId,
+              receiverId: friendId,
+              message: input.trim(), // 'message' format
+              content: input.trim(), // 'content' format
+              text: input.trim(),    // 'text' format
+              timestamp: messageTimestamp,
+              room: room
+            });
+          }
           
-          // Send to the room with the exact format backend expects
-          socket.current.emit("sendMessage", {
-            senderId: userId,
-            receiverId: friendId,
-            message: input, // Backend expects 'message' not 'content' or 'text'
-            room: roomName
-          });
-          
-          console.log("📤 Message emitted to room");
+          console.log("📤 Message emitted to all possible rooms");
         }
-
-        setInput("");
         
         // Clean up sent message tracking after 10 seconds
         setTimeout(() => {
@@ -730,6 +961,15 @@ const ChatWindow = ({ friendSlug }) => {
         
       } catch (error) {
         console.error("Error sending message:", error);
+        
+        // If API fails, mark message as failed but keep it in the UI
+        setMessages(prevMessages => 
+          prevMessages.map(msg => 
+            msg._locally_added 
+              ? { ...msg, _failed: true } 
+              : msg
+          )
+        );
       }
     }
   };
@@ -780,6 +1020,65 @@ const ChatWindow = ({ friendSlug }) => {
     }
   };
 
+  // Check for incoming calls stored in localStorage
+  useEffect(() => {
+    // Only check if we don't have an active incoming call already
+    if (!incomingCall) {
+      const storedIncomingCall = callHelper.getIncomingCall();
+      
+      if (storedIncomingCall) {
+        console.log("Found stored incoming call:", storedIncomingCall);
+        
+        // Ignore if it's my own call
+        if (storedIncomingCall.callerId === userId) {
+          console.log("This is my own stored call, ignoring");
+          return;
+        }
+        
+        // Show incoming call notification
+        setIncomingCall({
+          type: 'localStorage',
+          callerId: storedIncomingCall.callerId,
+          callerName: storedIncomingCall.callerName,
+          callerPeerId: storedIncomingCall.callerPeerId,
+          callObject: null,
+          callType: storedIncomingCall.callType || 'video'
+        });
+      }
+    }
+  }, [incomingCall, userId]);
+
+  // Add a new event listener for the custom incomingCall event
+  useEffect(() => {
+    const handleIncomingCallEvent = (event) => {
+      console.log("Received custom incomingCall event:", event.detail);
+      
+      // Ignore if it's my own call
+      if (event.detail.callerId === userId) {
+        console.log("This is my own call event, ignoring");
+        return;
+      }
+      
+      // Show incoming call notification
+      setIncomingCall({
+        type: 'custom',
+        callerId: event.detail.callerId,
+        callerName: event.detail.callerName,
+        callerPeerId: event.detail.callerPeerId,
+        callObject: null,
+        callType: event.detail.callType || 'video'
+      });
+    };
+    
+    // Add event listener
+    window.addEventListener("incomingCall", handleIncomingCallEvent);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener("incomingCall", handleIncomingCallEvent);
+    };
+  }, [userId]);
+
   // Add debugging right before rendering to see what messages are being mapped
   console.log("⭐️ RENDERING COMPONENT, messages state:", messages);
 
@@ -820,19 +1119,54 @@ const ChatWindow = ({ friendSlug }) => {
 
           {/* Incoming Call UI */}
           {incomingCall && (
-            <div className="incoming-call-overlay">
-              <div className="incoming-call-box">
+            <div className="incoming-call-overlay" style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.8)',
+              zIndex: 9999,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}>
+              <div className="incoming-call-box" style={{
+                backgroundColor: '#fff',
+                borderRadius: '10px',
+                padding: '30px',
+                textAlign: 'center',
+                maxWidth: '400px',
+                width: '90%',
+                boxShadow: '0 5px 15px rgba(0,0,0,0.3)'
+              }}>
                 <div className={`pulse-icon mb-3 ${incomingCall.callType === "audio" ? "bg-primary" : "bg-success"} text-white rounded-circle d-flex justify-content-center align-items-center mx-auto`}
-                     style={{ width: "80px", height: "80px" }}>
+                     style={{ width: "80px", height: "80px", animation: "pulse 1s infinite" }}>
                   {incomingCall.callType === "audio" ? <FaPhoneAlt size={32} /> : <FaVideo size={32} />}
                 </div>
                 <h4 className="mb-3">Incoming {incomingCall.callType === "audio" ? "Audio" : "Video"} Call</h4>
-                <p className="mb-4">{friendName || "Your friend"} is calling...</p>
+                <p className="mb-4">{incomingCall.callerName || friendName || "Your friend"} is calling...</p>
                 <div className="d-flex justify-content-center">
-                  <button className="btn call-button call-button-accept me-3" onClick={acceptCall}>
+                  <button className="btn call-button call-button-accept me-3" 
+                    style={{
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      padding: '10px 20px',
+                      fontSize: '16px'
+                    }}
+                    onClick={acceptCall}>
                     <FaPhoneAlt /> Accept
                   </button>
-                  <button className="btn call-button call-button-reject" onClick={rejectCall}>
+                  <button className="btn call-button call-button-reject" 
+                    style={{
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      padding: '10px 20px',
+                      fontSize: '16px'
+                    }}
+                    onClick={rejectCall}>
                     <FaPhoneSlash /> Decline
                   </button>
                 </div>
