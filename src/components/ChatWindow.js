@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { FaPhoneAlt, FaVideo, FaPhoneSlash, FaPaperPlane } from "react-icons/fa";
 import Peer from "peerjs";
 import { io } from "socket.io-client";
@@ -25,9 +25,6 @@ const ChatWindow = ({ friendSlug }) => {
   const mediaStream = useRef(null);
   const url = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
   const userId = getUser()?.id;
-  const roomName = useMemo(() => 
-    userId && friendId ? `room-${userId}-${friendId}` : null
-  , [userId, friendId]);
 
   useEffect(() => {
     socket.current = io(url);
@@ -54,15 +51,17 @@ const ChatWindow = ({ friendSlug }) => {
   useEffect(() => {
     if (!socket.current) return;
     
-    // Create a direct room between the two users regardless of roomName value
-    const directRoom = friendId ? `room-${userId}-${friendId}` : null;
+    // Join room based on both user IDs to ensure both users join the same room
+    // Sort IDs to ensure the same room name regardless of who initiates
+    const userIds = [userId, friendId].filter(id => id).sort();
+    const directRoom = userIds.length === 2 ? `chat-${userIds[0]}-${userIds[1]}` : null;
     
     if (directRoom) {
       console.log("Joining chat room:", directRoom);
       socket.current.emit("joinChat", { room: directRoom });
     }
     
-    // Also join a room with the user's own ID to receive messages when offline
+    // Also join a user-specific room to receive messages when this user is the target
     socket.current.emit("joinChat", { room: `user-${userId}` });
     
     // Listen for Incoming Calls
@@ -74,24 +73,29 @@ const ChatWindow = ({ friendSlug }) => {
     socket.current.on("receiveMessage", (data) => {
       console.log("Received message via socket:", data);
       // Extract data using the correct field names
-      const { senderId, receiverId, content, text } = data;
+      const { senderId, receiverId, content, text, timestamp, createdAt } = data;
       const messageContent = content || text; // Support both formats
       
-      // Accept messages meant for this user
+      // Accept messages meant for this user (either as sender or receiver)
       if (receiverId === userId || senderId === userId) {
         setMessages(prevMessages => {
-          // Prevent duplicate messages
+          // Create message with timestamp from server if available
+          const newMessage = { 
+            senderId, 
+            receiverId, 
+            text: messageContent, // Store as text for UI consistency
+            timestamp: timestamp || createdAt || new Date().toISOString() // Use source timestamp if available
+          };
+          
+          // Prevent duplicate messages by checking content
           const messageExists = prevMessages.some(
             msg => (msg.text === messageContent || msg.content === messageContent) && 
                   msg.senderId === senderId && 
                   msg.receiverId === receiverId
           );
+          
           if (messageExists) return prevMessages;
-          return [...prevMessages, { 
-            senderId, 
-            receiverId, 
-            text: messageContent // Store as text for UI consistency 
-          }];
+          return [...prevMessages, newMessage];
         });
       }
     });
@@ -130,8 +134,6 @@ const ChatWindow = ({ friendSlug }) => {
 
         // Log FULL response to understand its structure
         console.log("⭐️ Raw API response:", response);
-        console.log("⭐️ response.data:", response?.data);
-        console.log("⭐️ response.data.data:", response?.data?.data);
         
         // Improved error handling
         if (!response) {
@@ -143,10 +145,11 @@ const ChatWindow = ({ friendSlug }) => {
           // Handle case where data is directly the array
           console.log("⭐️ API returned direct array format");
           const formattedMessages = response.data.map(msg => ({
+            id: msg.id,
             senderId: msg.senderId,
             receiverId: msg.receiverId,
             text: msg.content || msg.text || msg.message || "",
-            id: msg.id
+            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
           }));
           console.log("⭐️ Formatted messages:", formattedMessages);
           setMessages(formattedMessages);
@@ -155,10 +158,11 @@ const ChatWindow = ({ friendSlug }) => {
           // Handle nested data format
           console.log("⭐️ API returned nested data format");
           const formattedMessages = response.data.data.map(msg => ({
+            id: msg.id,
             senderId: msg.senderId,
             receiverId: msg.receiverId,
             text: msg.content || msg.text || "", // API sends 'content' but component expects 'text'
-            id: msg.id
+            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
           }));
           console.log("⭐️ Formatted messages:", formattedMessages);
           setMessages(formattedMessages);
@@ -180,19 +184,28 @@ const ChatWindow = ({ friendSlug }) => {
     if (messages && Array.isArray(messages)) {
       // This is a safety check to ensure all messages have the right format
       const cleanedMessages = messages.map(msg => {
+        // Get timestamp from any available source
+        const timestamp = msg.createdAt || msg.timestamp || 
+                         (msg.id && new Date(Number(msg.id)).toISOString()) || 
+                         new Date().toISOString();
+                         
         // Ensure the basic properties exist
         return {
           id: msg.id || Date.now() + Math.random(),
           senderId: msg.senderId || msg.sender_id || 0,
           receiverId: msg.receiverId || msg.receiver_id || 0,
           text: msg.text || msg.content || msg.message || "",
+          timestamp: timestamp,
         };
       }).filter(msg => {
         // Filter out invalid messages
         return msg.text && (msg.senderId || msg.receiverId);
       });
       
-      if (JSON.stringify(cleanedMessages) !== JSON.stringify(messages)) {
+      // Only update if there's a difference (avoiding endless loop)
+      const cleaned = JSON.stringify(cleanedMessages);
+      const original = JSON.stringify(messages);
+      if (cleaned !== original) {
         console.log("⭐️ Cleaned up messages format for consistency:", cleanedMessages);
         setMessages(cleanedMessages);
       }
@@ -251,32 +264,47 @@ const ChatWindow = ({ friendSlug }) => {
       try {
         // First save message to database
         const response = await sendMessages(friendSlug, input);
-        console.log("Message sent response:", response);
+        console.log("Message sent response:", response?.data);
         
+        // Get the proper timestamp from the response
+        let messageTimestamp = new Date().toISOString();
+        
+        // Check different possible response formats for timestamp
+        if (response?.data?.data?.createdAt) {
+          messageTimestamp = response.data.data.createdAt;
+        } else if (response?.data?.createdAt) {
+          messageTimestamp = response.data.createdAt;
+        } else if (response?.data?.data?.timestamp) {
+          messageTimestamp = response.data.data.timestamp;
+        } else if (response?.data?.timestamp) {
+          messageTimestamp = response.data.timestamp;
+        }
+        
+        console.log("Using timestamp for new message:", messageTimestamp);
+        
+        // Create message with proper timestamp
         const newMessage = {
           senderId: userId,
           receiverId: friendId,
-          text: input // Use 'text' for local UI consistency
+          text: input,
+          timestamp: messageTimestamp
         };
 
         // Update UI immediately
         setMessages(prevMessages => [...prevMessages, newMessage]);
 
+        // Create a room name based on sorted user IDs for consistency
+        const userIds = [userId, friendId].sort();
+        const directRoom = `chat-${userIds[0]}-${userIds[1]}`;
+
         // Emit message to socket server
         if (socket.current) {
-          console.log("Emitting message:", {
-            senderId: userId,
-            receiverId: friendId,
-            content: input, // Use 'content' to match backend API
-            room: roomName
-          });
-          
-          // Send to general socket and specify room
           socket.current.emit("sendMessage", {
             senderId: userId,
             receiverId: friendId,
-            content: input, // Use 'content' to match backend API
-            room: roomName || `room-${userId}-${friendId}` // Fallback if roomName not set
+            content: input,
+            room: directRoom,
+            timestamp: messageTimestamp
           });
         }
 
@@ -284,6 +312,51 @@ const ChatWindow = ({ friendSlug }) => {
       } catch (error) {
         console.error("Error sending message:", error);
       }
+    }
+  };
+
+  // Function to format timestamp like WhatsApp/Teams
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    
+    try {
+      const date = new Date(timestamp);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.log("Invalid date from timestamp:", timestamp);
+        return '';
+      }
+      
+      const now = new Date();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      // Check if the message is from today
+      if (date.toDateString() === now.toDateString()) {
+        return `Today ${time}`;
+      }
+      // Check if the message is from yesterday
+      else if (date.toDateString() === yesterday.toDateString()) {
+        return `Yesterday ${time}`;
+      }
+      // Check if within the last week
+      else {
+        const dayDiff = Math.round((now - date) / (1000 * 60 * 60 * 24));
+        
+        if (dayDiff < 7) {
+          // Return day name (e.g., "Friday")
+          return `${date.toLocaleDateString([], { weekday: 'long' })} ${time}`;
+        } else {
+          // Return full date (e.g., "29 March 13:56")
+          return `${date.getDate()} ${date.toLocaleDateString([], { month: 'long' })} ${time}`;
+        }
+      }
+    } catch (e) {
+      console.error("Error formatting date:", e, "Timestamp was:", timestamp);
+      return '';
     }
   };
 
@@ -339,20 +412,81 @@ const ChatWindow = ({ friendSlug }) => {
           {/* ✅ Chat Messages Body */}
           <div className="chat-body flex-grow-1 overflow-auto p-3">
             {Array.isArray(messages) && messages.length > 0 ? (
-              messages.map((msg, index) => {
-                console.log("⭐️ Rendering message:", msg, "User ID:", userId);
-                const messageContent = msg.text || msg.content || msg.message || "";
-                const isSentByMe = String(msg.senderId) === String(userId);
+              (() => {
+                // Group messages by date
+                const messagesByDate = {};
+                const now = new Date();
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
                 
-                return (
-                  <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
-                    <div className={`p-2 rounded-3 ${isSentByMe ? "bg-primary text-white" : "bg-secondary text-white"}`} 
-                         style={{maxWidth: "70%", wordBreak: "break-word"}}>
-                      {messageContent}
+                // Sort messages by date
+                const sortedMessages = [...messages].sort((a, b) => {
+                  return new Date(a.timestamp || a.createdAt) - new Date(b.timestamp || b.createdAt);
+                });
+                
+                // Group them by date
+                sortedMessages.forEach(msg => {
+                  const timestamp = msg.timestamp || msg.createdAt;
+                  if (!timestamp) return;
+                  
+                  const date = new Date(timestamp);
+                  let dateKey;
+                  
+                  // Determine the date key
+                  if (date.toDateString() === now.toDateString()) {
+                    dateKey = "Today";
+                  } else if (date.toDateString() === yesterday.toDateString()) {
+                    dateKey = "Yesterday";
+                  } else {
+                    // Format: "Monday", "Tuesday", etc. for last week
+                    // Or "29 March" for older dates
+                    const dayDiff = Math.round((now - date) / (1000 * 60 * 60 * 24));
+                    if (dayDiff < 7) {
+                      dateKey = date.toLocaleDateString([], { weekday: 'long' });
+                    } else {
+                      dateKey = `${date.getDate()} ${date.toLocaleDateString([], { month: 'long' })}`;
+                    }
+                  }
+                  
+                  if (!messagesByDate[dateKey]) {
+                    messagesByDate[dateKey] = [];
+                  }
+                  messagesByDate[dateKey].push(msg);
+                });
+                
+                // Render messages grouped by date
+                return Object.entries(messagesByDate).map(([dateKey, groupMessages]) => (
+                  <div key={dateKey} className="message-group mb-4">
+                    {/* Date Header */}
+                    <div className="date-separator text-center my-3">
+                      <span className="date-label bg-light px-3 py-1 rounded-pill small text-muted">
+                        {dateKey}
+                      </span>
                     </div>
+                    
+                    {/* Messages for this date */}
+                    {groupMessages.map((msg, index) => {
+                      const messageContent = msg.text || msg.content || msg.message || "";
+                      const isSentByMe = String(msg.senderId) === String(userId);
+                      const timestamp = new Date(msg.timestamp || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      
+                      return (
+                        <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
+                          <div style={{maxWidth: "70%"}}>
+                            <div className={`p-2 rounded-3 ${isSentByMe ? "bg-primary text-white" : "bg-secondary text-white"}`} 
+                                 style={{wordBreak: "break-word"}}>
+                              {messageContent}
+                            </div>
+                            <div className="text-muted small mt-1 text-end">
+                              {timestamp}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })
+                ));
+              })()
             ) : (
               <div className="text-center text-muted mt-4">
                 No messages yet. Send a message to start the conversation!
