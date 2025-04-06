@@ -26,6 +26,9 @@ const ChatWindow = ({ friendSlug }) => {
   const url = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
   const userId = getUser()?.id;
 
+  // Track recently sent messages to avoid duplicates from socket
+  const sentMessagesRef = useRef(new Set());
+
   useEffect(() => {
     socket.current = io(url);
     peer.current = new Peer();
@@ -56,22 +59,20 @@ const ChatWindow = ({ friendSlug }) => {
   useEffect(() => {
     if (!socket.current) return;
     
-    // Create a standard room ID for both users (sorted to ensure consistency)
-    const userIds = [userId, friendId].filter(id => id).sort();
-    const directRoom = userIds.length === 2 ? `chat-${userIds[0]}-${userIds[1]}` : null;
+    // Create exact room name used by backend
+    const directRoom = friendId ? `room-${userId}-${friendId}` : null;
     
     if (directRoom) {
       console.log("Joining chat room:", directRoom);
       socket.current.emit("joinChat", { room: directRoom });
       
-      // Also join a direct room with friend specifically
-      const directFriendRoom = `direct-${friendId}`;
-      socket.current.emit("joinChat", { room: directFriendRoom });
+      // Also join reversed room (in case message is sent to that room instead)
+      const reversedRoom = `room-${friendId}-${userId}`;
+      socket.current.emit("joinChat", { room: reversedRoom });
     }
     
-    // Always join user's personal room to receive messages
-    const personalRoom = `user-${userId}`;
-    socket.current.emit("joinChat", { room: personalRoom });
+    // Also join personal room to catch direct messages
+    socket.current.emit("joinChat", { room: `${userId}` });
     
     // Listen for Incoming Calls
     socket.current.on("incomingCall", ({ callerId }) => {
@@ -86,12 +87,18 @@ const ChatWindow = ({ friendSlug }) => {
     // Listen for Incoming Messages
     socket.current.on("receiveMessage", (data) => {
       console.log("📩 Received message via socket:", data);
-      // Extract data using the correct field names
-      const { senderId, receiverId, content, text, timestamp, createdAt } = data;
-      const messageContent = content || text; // Support both formats
+      // Extract data using the correct field names from backend
+      const { senderId, receiverId, message } = data;
+      const messageContent = message; // Backend sends 'message' property
       
       if (!messageContent) {
         console.log("📩 Received empty message, ignoring");
+        return;
+      }
+
+      // Skip this message if it's from us and we just sent it (to avoid duplicates)
+      if (String(senderId) === String(userId) && sentMessagesRef.current.has(messageContent)) {
+        console.log("📩 Skipping locally sent message received from socket:", messageContent);
         return;
       }
       
@@ -99,17 +106,17 @@ const ChatWindow = ({ friendSlug }) => {
       if (receiverId === userId || senderId === userId) {
         console.log(`📩 Message is for me! senderId=${senderId}, receiverId=${receiverId}, userId=${userId}`);
         setMessages(prevMessages => {
-          // Create message with timestamp from server if available
+          // Create message with timestamp
           const newMessage = { 
             senderId, 
             receiverId, 
             text: messageContent, // Store as text for UI consistency
-            timestamp: timestamp || createdAt || new Date().toISOString() // Use source timestamp if available
+            timestamp: new Date().toISOString() // Use current time as socket doesn't provide timestamp
           };
           
           // Prevent duplicate messages by checking content and IDs
           const messageExists = prevMessages.some(
-            msg => (msg.text === messageContent || msg.content === messageContent) && 
+            msg => (msg.text === messageContent) && 
                   String(msg.senderId) === String(senderId) && 
                   String(msg.receiverId) === String(receiverId)
           );
@@ -314,6 +321,12 @@ const ChatWindow = ({ friendSlug }) => {
   const sendMessage = async () => {
     if (input.trim() !== "") {
       try {
+        // Generate a temporary ID to track this message
+        const tempId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        
+        // Add to tracking set to prevent duplicate from socket
+        sentMessagesRef.current.add(input.trim());
+        
         // First save message to database
         const response = await sendMessages(friendSlug, input);
         console.log("📤 Message sent response:", response?.data);
@@ -336,10 +349,12 @@ const ChatWindow = ({ friendSlug }) => {
         
         // Create message with proper timestamp
         const newMessage = {
+          id: tempId, // Add unique ID
           senderId: userId,
           receiverId: friendId,
           text: input,
-          timestamp: messageTimestamp
+          timestamp: messageTimestamp,
+          _locally_added: true // Mark as locally added
         };
 
         // Update UI immediately (for sender)
@@ -347,34 +362,29 @@ const ChatWindow = ({ friendSlug }) => {
 
         // Send to direct rooms to ensure delivery
         if (socket.current) {
-          // 1. Send to shared chat room (sorted IDs)
-          const userIds = [userId, friendId].sort();
-          const directRoom = `chat-${userIds[0]}-${userIds[1]}`;
+          // Create the exact same room name as backend uses
+          const roomName = `room-${userId}-${friendId}`;
           
-          // 2. Also send directly to recipient's personal room
-          const recipientRoom = `user-${friendId}`;
+          console.log(`📤 Emitting message to room: ${roomName}`);
           
-          // 3. And also send to direct friend room
-          const directFriendRoom = `direct-${friendId}`;
-          
-          console.log(`📤 Emitting message to rooms: ${directRoom}, ${recipientRoom}, ${directFriendRoom}`);
-          
-          // Send to all relevant rooms to maximize chances of delivery
-          [directRoom, recipientRoom, directFriendRoom].forEach(room => {
-            socket.current.emit("sendMessage", {
-              senderId: userId,
-              receiverId: friendId,
-              content: input,
-              text: input, // Include both for compatibility
-              room: room,
-              timestamp: messageTimestamp
-            });
+          // Send to the room with the exact format backend expects
+          socket.current.emit("sendMessage", {
+            senderId: userId,
+            receiverId: friendId,
+            message: input, // Backend expects 'message' not 'content' or 'text'
+            room: roomName
           });
           
-          console.log("📤 Message emitted to all rooms");
+          console.log("📤 Message emitted to room");
         }
 
         setInput("");
+        
+        // Clean up sent message tracking after 10 seconds
+        setTimeout(() => {
+          sentMessagesRef.current.delete(input.trim());
+        }, 10000);
+        
       } catch (error) {
         console.error("Error sending message:", error);
       }
