@@ -37,25 +37,31 @@ const ChatWindow = ({ friendSlug }) => {
     const emoji = emojiData.emoji;
     const inputElement = document.querySelector('.chat-footer input');
     
+    // For flag emojis, ensure we're using the actual Unicode characters
+    let emojiToInsert = emoji;
+    
     // If we have access to the input element
     if (inputElement) {
       const start = inputElement.selectionStart;
       const end = inputElement.selectionEnd;
       
       // Insert emoji at cursor position
-      const newValue = input.substring(0, start) + emoji + input.substring(end);
+      const newValue = input.substring(0, start) + emojiToInsert + input.substring(end);
       setInput(newValue);
       
       // Set cursor position after emoji
       setTimeout(() => {
-        inputElement.selectionStart = start + emoji.length;
-        inputElement.selectionEnd = start + emoji.length;
+        inputElement.selectionStart = start + emojiToInsert.length;
+        inputElement.selectionEnd = start + emojiToInsert.length;
         inputElement.focus();
       }, 10);
     } else {
       // Fallback to appending at the end
-      setInput(prev => prev + emoji);
+      setInput(prev => prev + emojiToInsert);
     }
+    
+    // Keep emoji picker open for multiple emoji selection
+    // setShowEmojiPicker(false);
   };
 
   // Close emoji picker when clicking outside
@@ -1307,7 +1313,8 @@ const ChatWindow = ({ friendSlug }) => {
                                 padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem",
                                 backgroundColor: isEmojiOnly ? "transparent" : "",
                                 color: isEmojiOnly ? "inherit" : "",
-                                textShadow: isEmojiOnly ? "none" : ""
+                                textShadow: isEmojiOnly ? "none" : "",
+                                fontFamily: "Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Android Emoji, EmojiSymbols, sans-serif"
                               }}
                             >
                               {messageContent}
@@ -1469,8 +1476,10 @@ const ChatWindow = ({ friendSlug }) => {
                     <div className="mt-2">
                       <div className="small fw-bold mb-1">Flags</div>
                       <div className="d-flex flex-wrap">
-                        {["🇺🇸", "🇬🇧", "🇨🇦", "🇦🇺", "🇮🇳", "🇯🇵", "🇰🇷", "🇫🇷", "🇩🇪", "🇮🇹",
-                          "🇧🇷", "🇲🇽", "🇪🇸", "🇷🇺", "🇨🇳", "🇿🇦", "🇸🇦", "🇦🇪", "🇳🇬", "🇪🇬"
+                        {["🇺🇸", "🇬🇧", "🇨🇦", "🇦🇺", "🇮🇳", "🇯🇵", "🇰🇷", "🇫🇷", "🇩🇪", "🇮🇹", 
+                          "🇧🇷", "🇲🇽", "🇪🇸", "🇷🇺", "🇨🇳", "🇿🇦", "🇸🇦", "🇦🇪", "🇳🇬", "🇪🇬",
+                          "🇵🇰", "🇵🇭", "🇸🇪", "🇳🇴", "🇫🇮", "🇵🇹", "🇮🇪", "🇧🇪", "🇦🇷", "🇨🇱",
+                          "🇨🇴", "🇵🇪", "🇧🇴", "🇻🇪", "🇹🇷", "🇬🇷", "🇮🇱", "🇮🇷", "🇿🇼", "🇰🇪"
                         ].map((emoji, index) => (
                           <div 
                             key={index} 

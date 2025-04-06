@@ -107,6 +107,7 @@
 }
 
 .emoji-picker-container {
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", sans-serif;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
   border-radius: 8px;
   overflow: hidden;
@@ -206,6 +207,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", sans-serif;
+}
+
+/* Enhanced flag emoji support */
+.emoji-item {
+  /* Font stack specifically optimized for flag emojis */
+  font-family: "Twemoji Mozilla", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "EmojiOne Color", "Android Emoji", sans-serif;
+  /* Better text rendering */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Special styling for flag emojis */
+.emoji-item:has(img), 
+.emoji-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .emoji-item:hover {
@@ -226,4 +245,57 @@
   padding: 5px 0;
   margin-top: 10px;
   border-bottom: 1px solid #e9ecef;
+}
+
+/* Flag emoji specific styling */
+.flag-emoji {
+  font-size: 1.4em; /* Larger size for flags */
+  line-height: 1;
+  letter-spacing: 0; /* Important for flag rendering */
+}
+
+/* Flag emoji images styling */
+.flag-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+.flag-emoji img {
+  width: 24px;
+  height: 18px;
+  border-radius: 2px;
+  object-fit: cover;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  transition: all 0.2s ease;
+}
+
+.flag-emoji:hover img {
+  transform: scale(1.2);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.flag-emoji:active img {
+  transform: scale(0.95);
+}
+
+/* Fix flag emoji rendering across browsers */
+.emoji-message .flag-emoji,
+.chat-body span.flag-emoji {
+  font-family: "Twemoji Mozilla", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif;
+  display: inline-block;
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+/* Special flag handling in messages */
+.chat-body .text-white span,
+.chat-body .p-2 {
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", sans-serif;
+}
+
+/* Ensure emoji font is loaded for the input field */
+.chat-footer input {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
