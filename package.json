@@ -12,6 +12,7 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.7.9",
     "bootstrap": "^5.3.3",
+    "emoji-picker-react": "^4.12.2",
     "lodash": "^4.17.21",
     "peer": "^1.0.2",
     "peerjs": "^1.5.4",

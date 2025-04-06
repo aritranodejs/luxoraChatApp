@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { FaPhoneAlt, FaVideo, FaPhoneSlash, FaPaperPlane } from "react-icons/fa";
+import { FaPhoneAlt, FaVideo, FaPhoneSlash, FaPaperPlane, FaSmile } from "react-icons/fa";
 import Peer from "peerjs";
 import { io } from "socket.io-client";
 import { updatePeerId, getFriend } from "../services/friendService";
@@ -18,6 +18,7 @@ const ChatWindow = ({ friendSlug }) => {
   const [loading, setLoading] = useState(true);
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const myVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -30,6 +31,48 @@ const ChatWindow = ({ friendSlug }) => {
 
   // Track recently sent messages to avoid duplicates from socket
   const sentMessagesRef = useRef(new Set());
+
+  // Handler for emoji selection
+  const onEmojiClick = (emojiData) => {
+    const emoji = emojiData.emoji;
+    const inputElement = document.querySelector('.chat-footer input');
+    
+    // If we have access to the input element
+    if (inputElement) {
+      const start = inputElement.selectionStart;
+      const end = inputElement.selectionEnd;
+      
+      // Insert emoji at cursor position
+      const newValue = input.substring(0, start) + emoji + input.substring(end);
+      setInput(newValue);
+      
+      // Set cursor position after emoji
+      setTimeout(() => {
+        inputElement.selectionStart = start + emoji.length;
+        inputElement.selectionEnd = start + emoji.length;
+        inputElement.focus();
+      }, 10);
+    } else {
+      // Fallback to appending at the end
+      setInput(prev => prev + emoji);
+    }
+  };
+
+  // Close emoji picker when clicking outside
+  const emojiPickerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   useEffect(() => {
     // Initialize socket with explicit debug options
@@ -677,7 +720,7 @@ const ChatWindow = ({ friendSlug }) => {
       alert("Cannot start call: socket connection not available");
       return;
     }
-    
+
     try {
       // Set active call state
       setActiveCall({
@@ -834,7 +877,7 @@ const ChatWindow = ({ friendSlug }) => {
       
       // Clear incoming call data since we're handling it now
       callHelper.clearIncomingCall();
-      setIncomingCall(null);
+        setIncomingCall(null);
       
       // Navigate to call screen
       console.log(`Navigating to /call/${friendSlug}?callType=${incomingCall.callType}&friendName=${encodeURIComponent(incomingCall.callerName)}`);
@@ -881,13 +924,13 @@ const ChatWindow = ({ friendSlug }) => {
           timestamp: new Date().toISOString(),
           _locally_added: true // Mark as locally added
         };
-        
+
         // Add to tracking set to prevent duplicate from socket
         sentMessagesRef.current.add(input.trim());
-        
+
         // Update UI immediately for better user experience
         setMessages(prevMessages => [...prevMessages, messageData]);
-        
+
         // Reset input field immediately for better UX
         setInput("");
         
@@ -970,6 +1013,23 @@ const ChatWindow = ({ friendSlug }) => {
               : msg
           )
         );
+      }
+    }
+  };
+
+  // Check if message contains only emojis
+  const isEmojiOnlyMessage = (message) => {
+    // Simplified regex that works better across browsers
+    const emojiRegex = /^\p{Emoji}+$/u;
+    try {
+      return emojiRegex.test(message.trim());
+    } catch (e) {
+      // Fallback detection for browsers that don't support unicode property escapes
+      const simpleEmojiTest = /^[\u{1F300}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]+$/u;
+      try {
+        return simpleEmojiTest.test(message.trim());
+      } catch (e) {
+        return false;
       }
     }
   };
@@ -1234,12 +1294,22 @@ const ChatWindow = ({ friendSlug }) => {
                       const messageContent = msg.text || msg.content || msg.message || "";
                       const isSentByMe = String(msg.senderId) === String(userId);
                       const timestamp = new Date(msg.timestamp || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      const isEmojiOnly = isEmojiOnlyMessage(messageContent);
                       
                       return (
                         <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
                           <div style={{maxWidth: "70%"}}>
-                            <div className={`p-2 rounded-3 ${isSentByMe ? "bg-primary text-white" : "bg-secondary text-white"}`} 
-                                 style={{wordBreak: "break-word"}}>
+                            <div 
+                              className={`p-2 rounded-3 ${isSentByMe ? "bg-primary text-white" : "bg-secondary text-white"} ${isEmojiOnly ? "emoji-message" : ""}`} 
+                              style={{
+                                wordBreak: "break-word",
+                                fontSize: isEmojiOnly ? "2rem" : "inherit",
+                                padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem",
+                                backgroundColor: isEmojiOnly ? "transparent" : "",
+                                color: isEmojiOnly ? "inherit" : "",
+                                textShadow: isEmojiOnly ? "none" : ""
+                              }}
+                            >
                               {messageContent}
                             </div>
                             <div className="text-muted small mt-1 text-end">
@@ -1262,19 +1332,225 @@ const ChatWindow = ({ friendSlug }) => {
 
           {/* Chat Input + Send Button */}
           <div className="chat-footer d-flex p-2 border-top">
-            <input 
-              type="text" 
-              className="form-control" 
-              value={input} 
-              onChange={(e) => setInput(e.target.value)} 
-              placeholder="Type a message..."
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-            />
+            <div className="position-relative d-flex flex-grow-1">
+              <button 
+                className="emoji-btn" 
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                title="Add emoji"
+                aria-label="Add emoji"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+              >
+                <FaSmile />
+              </button>
+              
+              {showEmojiPicker && (
+                <div 
+                  className="emoji-picker-container" 
+                  ref={emojiPickerRef}
+                  style={{
+                    position: 'absolute', 
+                    bottom: '50px', 
+                    left: '0', 
+                    zIndex: 10,
+                    backgroundColor: 'white',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '0.25rem',
+                    width: '320px',
+                    maxHeight: '350px',
+                    overflow: 'auto'
+                  }}
+                >
+                  {/* Simple hardcoded emoji grid for reliability */}
+                  <div className="p-2">
+                    <div className="d-flex flex-wrap">
+                      {/* Common smileys */}
+                      {["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", 
+                        "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚",
+                        "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🤩",
+                        "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖",
+                        "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯"
+                      ].map((emoji, index) => (
+                        <div 
+                          key={index} 
+                          onClick={() => onEmojiClick({ emoji })}
+                          className="emoji-item"
+                        >
+                          {emoji}
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Hand Gestures</div>
+                      <div className="d-flex flex-wrap">
+                        {["👍", "👎", "👌", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉",
+                          "👆", "👇", "☝️", "👋", "🤚", "🖐️", "✋", "🖖", "👏", "🙌"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Hearts & Love</div>
+                      <div className="d-flex flex-wrap">
+                        {["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔",
+                          "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "♥️"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Animals</div>
+                      <div className="d-flex flex-wrap">
+                        {["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯",
+                          "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🦆", "🦅"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Food & Drink</div>
+                      <div className="d-flex flex-wrap">
+                        {["🍎", "🍓", "🍒", "🍕", "🍔", "🍟", "🍖", "🍗", "🥩", "🥓",
+                          "🌮", "🌯", "🍣", "🍤", "🍦", "🍩", "🍰", "🧁", "🥂", "☕"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Travel & Places</div>
+                      <div className="d-flex flex-wrap">
+                        {["🏠", "🏡", "🏢", "🏣", "🏤", "🏥", "🏦", "🏨", "🏩", "🏪",
+                          "🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "✈️"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Flags</div>
+                      <div className="d-flex flex-wrap">
+                        {["🇺🇸", "🇬🇧", "🇨🇦", "🇦🇺", "🇮🇳", "🇯🇵", "🇰🇷", "🇫🇷", "🇩🇪", "🇮🇹",
+                          "🇧🇷", "🇲🇽", "🇪🇸", "🇷🇺", "🇨🇳", "🇿🇦", "🇸🇦", "🇦🇪", "🇳🇬", "🇪🇬"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Activities & Sports</div>
+                      <div className="d-flex flex-wrap">
+                        {["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🎱", "🏓", "🏸",
+                          "🥊", "🥋", "🎣", "🏹", "🎯", "🥌", "🛷", "🎮", "🎲", "♟️"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Objects</div>
+                      <div className="d-flex flex-wrap">
+                        {["📱", "💻", "⌚", "📷", "🔋", "💡", "🔍", "🔑", "🔒", "📁",
+                          "📅", "📌", "📎", "✂️", "📝", "📚", "📰", "🎵", "🎬", "🎨"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="small fw-bold mb-1">Symbols</div>
+                      <div className="d-flex flex-wrap">
+                        {["💯", "⚠️", "🚫", "✅", "❌", "⭕", "📛", "🔞", "☢️", "☣️",
+                          "⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️", "↕️", "↔️"
+                        ].map((emoji, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => onEmojiClick({ emoji })}
+                            className="emoji-item"
+                          >
+                            {emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <input 
+                type="text" 
+                className="form-control ms-2" 
+                value={input} 
+                onChange={(e) => setInput(e.target.value)} 
+                placeholder="Type a message..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+              />
+            </div>
             <button className="btn btn-primary ms-2" onClick={sendMessage}>
               <FaPaperPlane />
             </button>
