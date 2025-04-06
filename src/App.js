@@ -40,18 +40,27 @@ function AppContent() {
         )}
 
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/verify-otp" element={<Otp />} />
-          <Route path="/register" element={<Register />} />
           {isLoggedIn ? (
             <>
+              {/* Redirect auth pages to chat if user is already logged in */}
+              <Route path="/login" element={<Navigate to="/chat" replace />} />
+              <Route path="/register" element={<Navigate to="/chat" replace />} />
+              <Route path="/verify-otp" element={<Navigate to="/chat" replace />} />
+              
+              {/* Main app routes */}
               <Route path="/chat" element={<h1 className="text-muted text-center app-title">Welcome to LuxoraChat</h1>} />
               <Route path="/chat/search" element={<Friends onlyFriends={false} />} />
               <Route path="/chat/:friendSlug" element={<Chat onClose={closeDrawer} />} />
               <Route path="/*" element={<Navigate to="/chat" />} />
             </>
           ) : (
-            <Route path="/*" element={<Navigate to="/login" />} />
+            <>
+              {/* Auth routes for logged-out users */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/verify-otp" element={<Otp />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/*" element={<Navigate to="/login" />} />
+            </>
           )}
         </Routes>
       </div>
