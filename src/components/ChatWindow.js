@@ -1306,11 +1306,10 @@ const ChatWindow = ({ friendSlug }) => {
                         <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
                           <div style={{maxWidth: "70%"}}>
                             <div 
-                              className={`p-2 rounded-3 ${isSentByMe ? "bg-primary text-white" : "bg-secondary text-white"} ${isEmojiOnly ? "emoji-message" : ""}`} 
+                              className={`message-bubble ${isSentByMe ? "sent" : "received"} ${isEmojiOnly ? "emoji-message" : ""}`}
                               style={{
-                                wordBreak: "break-word",
                                 fontSize: isEmojiOnly ? "2rem" : "inherit",
-                                padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem",
+                                padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem 1rem",
                                 backgroundColor: isEmojiOnly ? "transparent" : "",
                                 color: isEmojiOnly ? "inherit" : "",
                                 textShadow: isEmojiOnly ? "none" : "",
@@ -1318,9 +1317,16 @@ const ChatWindow = ({ friendSlug }) => {
                               }}
                             >
                               {messageContent}
+                              {!isEmojiOnly && (
+                                <div className="message-options">
+                                  <button className="btn" onClick={() => {/* Add your message options handler here */}}>
+                                    <i className="fas fa-ellipsis-v"></i>
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                            <div className="text-muted small mt-1 text-end">
-                              {timestamp}
+                            <div className="message-timestamp">
+                              {formatTime(msg.timestamp)}
                             </div>
                           </div>
                         </div>
