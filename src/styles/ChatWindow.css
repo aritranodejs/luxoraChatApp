@@ -184,11 +184,21 @@
 
 /* Improve message display */
 .message-container {
-  max-height: calc(100vh - 160px);
+  height: calc(100vh - 130px);
   overflow-y: auto;
   padding: 1rem;
   scroll-behavior: smooth;
-  background-color: #f8f9fa;
+  background-color: #121212;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.message-container .messages-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: min-content;
+  width: 100%;
 }
 
 /* Custom scrollbar for chat */
@@ -345,12 +355,16 @@
 /* Message bubble improvements */
 .message-bubble {
   position: relative;
-  padding: 10px 14px;
-  border-radius: 16px;
-  margin-bottom: 6px;
-  max-width: 100%;
+  padding: 12px 16px;
+  border-radius: 18px;
+  margin-bottom: 8px;
+  max-width: 85%;
   word-break: break-word;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  line-height: 1.4;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .message-bubble.sent {
@@ -361,11 +375,10 @@
 }
 
 .message-bubble.received {
-  background-color: #f8f9fa;
-  color: #212529;
+  background-color: #2d2d2d;
+  color: #fff;
   margin-right: auto;
   border-bottom-left-radius: 4px;
-  border: 1px solid #e9ecef;
 }
 
 /* Timestamp improvements */
@@ -437,6 +450,15 @@
   .message-options {
     right: -25px;
   }
+
+  .message-container {
+    height: calc(100vh - 120px);
+    padding: 10px;
+  }
+
+  .message-container .messages-wrapper {
+    padding-bottom: 10px;
+  }
 }
 
 /* Base container styles */
@@ -506,32 +528,6 @@
   box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
 }
 
-/* Message bubble improvements */
-.message-bubble {
-  position: relative;
-  padding: 12px 16px;
-  border-radius: 18px;
-  margin-bottom: 8px;
-  max-width: 85%;
-  word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  line-height: 1.4;
-}
-
-.message-bubble.sent {
-  background-color: #0d6efd;
-  color: white;
-  margin-left: auto;
-  border-bottom-right-radius: 4px;
-}
-
-.message-bubble.received {
-  background-color: #2d2d2d;
-  color: #fff;
-  margin-right: auto;
-  border-bottom-left-radius: 4px;
-}
-
 /* Emoji picker container */
 .emoji-picker-container {
   position: absolute;
@@ -589,69 +585,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* Mobile optimizations */
-@media (max-width: 576px) {
-  .chat-container {
-    height: 100vh;
-    width: 100vw;
-    position: fixed;
-    top: 0;
-    left: 0;
-  }
-
-  .message-container {
-    height: calc(100vh - 120px);
-    padding: 10px;
-  }
-
-  .chat-footer {
-    padding: 12px;
-  }
-
-  .chat-footer input {
-    padding: 10px 40px;
-    font-size: 16px; /* Better for mobile touch */
-  }
-
-  .emoji-btn {
-    left: 15px;
-    width: 32px;
-    height: 32px;
-  }
-
-  .send-btn {
-    right: 15px;
-    width: 32px;
-    height: 32px;
-  }
-
-  .message-bubble {
-    max-width: 90%;
-    padding: 10px 14px;
-    margin-bottom: 6px;
-  }
-
-  .emoji-picker-container {
-    position: fixed;
-    bottom: 65px;
-    left: 0;
-    width: 100%;
-    max-height: 40vh;
-    border-radius: 12px 12px 0 0;
-    margin-bottom: 0;
-  }
-
-  .message-options {
-    opacity: 1;
-    right: -28px;
-  }
-
-  .message-timestamp {
-    font-size: 0.65rem;
-    margin-top: 2px;
-  }
 }
 
 /* Dark theme timestamp */

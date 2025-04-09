@@ -32,6 +32,63 @@ const ChatWindow = ({ friendSlug }) => {
   // Track recently sent messages to avoid duplicates from socket
   const sentMessagesRef = useRef(new Set());
 
+  const messageContainerRef = useRef(null);
+
+  // Add this new function to scroll to bottom
+  const scrollToBottom = () => {
+    if (messageContainerRef.current) {
+      const scrollHeight = messageContainerRef.current.scrollHeight;
+      const height = messageContainerRef.current.clientHeight;
+      const maxScrollTop = scrollHeight - height;
+      messageContainerRef.current.scrollTop = maxScrollTop > 0 ? maxScrollTop : 0;
+    }
+  };
+
+  // Update useEffect for messages
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Update useEffect for chat history
+  useEffect(() => {
+    const fetchChatHistory = async () => {
+      try {
+        console.log("⭐️ Starting fetchChatHistory for friend:", friendSlug);
+        const response = await getChats(friendSlug);
+
+        if (response?.data && Array.isArray(response.data)) {
+          const formattedMessages = response.data.map(msg => ({
+            id: msg.id,
+            senderId: msg.senderId,
+            receiverId: msg.receiverId,
+            text: msg.content || msg.text || msg.message || "",
+            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
+          }));
+          setMessages(formattedMessages);
+          // Scroll to bottom after setting messages
+          setTimeout(scrollToBottom, 100);
+        } 
+        else if (response?.status === 200 && response?.data?.data && Array.isArray(response.data.data)) {
+          const formattedMessages = response.data.data.map(msg => ({
+            id: msg.id,
+            senderId: msg.senderId,
+            receiverId: msg.receiverId,
+            text: msg.content || msg.text || "",
+            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
+          }));
+          setMessages(formattedMessages);
+          // Scroll to bottom after setting messages
+          setTimeout(scrollToBottom, 100);
+        }
+
+      } catch (error) {
+        console.error("⭐️ Error fetching chat history:", error);
+      }
+    };
+
+    if (friendSlug) fetchChatHistory();
+  }, [friendSlug]);
+
   // Handler for emoji selection
   const onEmojiClick = (emojiData) => {
     const emoji = emojiData.emoji;
@@ -633,59 +690,6 @@ const ChatWindow = ({ friendSlug }) => {
     if (friendSlug) fetchFriendData();
   }, [friendSlug]);
 
-  useEffect(() => {
-    const fetchChatHistory = async () => {
-      try {
-        console.log("⭐️ Starting fetchChatHistory for friend:", friendSlug);
-        const response = await getChats(friendSlug);
-
-        // Log FULL response to understand its structure
-        console.log("⭐️ Raw API response:", response);
-        
-        // Improved error handling
-        if (!response) {
-          console.error("⭐️ No response received from getChats API");
-          return;
-        }
-
-        if (response.data && Array.isArray(response.data)) {
-          // Handle case where data is directly the array
-          console.log("⭐️ API returned direct array format");
-          const formattedMessages = response.data.map(msg => ({
-            id: msg.id,
-            senderId: msg.senderId,
-            receiverId: msg.receiverId,
-            text: msg.content || msg.text || msg.message || "",
-            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
-          }));
-          console.log("⭐️ Formatted messages:", formattedMessages);
-          setMessages(formattedMessages);
-        } 
-        else if (response.status === 200 && response?.data?.data && Array.isArray(response.data.data)) {
-          // Handle nested data format
-          console.log("⭐️ API returned nested data format");
-          const formattedMessages = response.data.data.map(msg => ({
-            id: msg.id,
-            senderId: msg.senderId,
-            receiverId: msg.receiverId,
-            text: msg.content || msg.text || "", // API sends 'content' but component expects 'text'
-            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
-          }));
-          console.log("⭐️ Formatted messages:", formattedMessages);
-          setMessages(formattedMessages);
-        }
-        else {
-          console.error("⭐️ Unexpected API response format:", response);
-        }
-
-      } catch (error) {
-        console.error("⭐️ Error fetching chat history:", error);
-      }
-    };
-
-    if (friendSlug) fetchChatHistory();
-  }, [friendSlug]);
-
   // Add a useEffect to clean up and standardize message format
   useEffect(() => {
     if (messages && Array.isArray(messages)) {
@@ -839,7 +843,7 @@ const ChatWindow = ({ friendSlug }) => {
       console.error("No incoming call data found when accepting call");
       return;
     }
-    
+
     try {
       // Try to play a sound to ensure audio context is activated
       const audio = new Audio();
@@ -1008,6 +1012,9 @@ const ChatWindow = ({ friendSlug }) => {
           sentMessagesRef.current.delete(input.trim());
         }, 10000);
         
+        // After sending message, scroll to bottom
+        setTimeout(scrollToBottom, 100);
+
       } catch (error) {
         console.error("Error sending message:", error);
         
@@ -1241,7 +1248,7 @@ const ChatWindow = ({ friendSlug }) => {
           )}
 
           {/* Chat Messages Body */}
-          <div className="chat-body flex-grow-1 overflow-auto p-3">
+          <div className="chat-body flex-grow-1 overflow-auto p-3" ref={messageContainerRef}>
             {Array.isArray(messages) && messages.length > 0 ? (
               (() => {
                 // Group messages by date
@@ -1293,7 +1300,7 @@ const ChatWindow = ({ friendSlug }) => {
                       <span className="date-label bg-light px-3 py-1 rounded-pill small text-muted">
                         {dateKey}
                       </span>
-                    </div>
+                </div>
                     
                     {/* Messages for this date */}
                     {groupMessages.map((msg, index) => {
@@ -1322,7 +1329,7 @@ const ChatWindow = ({ friendSlug }) => {
                                   <button className="btn" onClick={() => {/* Add your message options handler here */}}>
                                     <i className="fas fa-ellipsis-v"></i>
                                   </button>
-                                </div>
+              </div>
                               )}
                             </div>
                             <div className="message-timestamp">
