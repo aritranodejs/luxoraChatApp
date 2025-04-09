@@ -653,6 +653,54 @@ const ChatWindow = ({ friendSlug }) => {
       }
     });
 
+    // Add socket event listener for online/offline status
+    socket.current.on("userStatusChange", (data) => {
+      if (data.userId === friendId) {
+        setOnlineStatus(data.isOnline);
+        
+        // Show status change message
+        const statusMessage = {
+          id: `status-${Date.now()}`,
+          type: 'status',
+          text: `${friendName} is ${data.isOnline ? 'online' : 'offline'}`,
+          timestamp: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, statusMessage]);
+      }
+    });
+
+    // Listen for friend's disconnection
+    socket.current.on("userDisconnected", (data) => {
+      if (data.userId === friendId) {
+        setOnlineStatus(false);
+        
+        // Show disconnection message
+        const statusMessage = {
+          id: `status-${Date.now()}`,
+          type: 'status',
+          text: `${friendName} is offline`,
+          timestamp: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, statusMessage]);
+      }
+    });
+
+    // Listen for friend's reconnection
+    socket.current.on("userReconnected", (data) => {
+      if (data.userId === friendId) {
+        setOnlineStatus(true);
+        
+        // Show reconnection message
+        const statusMessage = {
+          id: `status-${Date.now()}`,
+          type: 'status',
+          text: `${friendName} is online`,
+          timestamp: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, statusMessage]);
+      }
+    });
+
     return () => {
       if (directRoom) {
         socket.current.emit("leaveChat", { room: directRoom });
@@ -667,6 +715,9 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current.off("globalCallAnnouncement");
       socket.current.off("emergencyDirectCall");
       socket.current.off("missedCall");
+      socket.current.off("userStatusChange");
+      socket.current.off("userDisconnected");
+      socket.current.off("userReconnected");
       
       // Clear the polling interval
       clearInterval(pollInterval);
@@ -1169,7 +1220,9 @@ const ChatWindow = ({ friendSlug }) => {
               </div>
               <div className="flex-grow-1">
                 <h5 className="mb-0">{friendName || "Unknown"}</h5>
-                <span className="text-success">{onlineStatus ? "Active now" : "Offline"}</span>
+                <span className={`status-text ${onlineStatus ? 'text-success' : 'text-secondary'}`}>
+                  {onlineStatus ? "Active now" : "Offline"}
+                </span>
               </div>
             </div>
             <div className="d-flex">
@@ -1250,98 +1303,52 @@ const ChatWindow = ({ friendSlug }) => {
           {/* Chat Messages Body */}
           <div className="chat-body flex-grow-1 overflow-auto p-3" ref={messageContainerRef}>
             {Array.isArray(messages) && messages.length > 0 ? (
-              (() => {
-                // Group messages by date
-                const messagesByDate = {};
-                const now = new Date();
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
-                
-                // Sort messages by date
-                const sortedMessages = [...messages].sort((a, b) => {
-                  return new Date(a.timestamp || a.createdAt) - new Date(b.timestamp || b.createdAt);
-                });
-                
-                // Group them by date
-                sortedMessages.forEach(msg => {
-                  const timestamp = msg.timestamp || msg.createdAt;
-                  if (!timestamp) return;
-                  
-                  const date = new Date(timestamp);
-                  let dateKey;
-                  
-                  // Determine the date key
-                  if (date.toDateString() === now.toDateString()) {
-                    dateKey = "Today";
-                  } else if (date.toDateString() === yesterday.toDateString()) {
-                    dateKey = "Yesterday";
-                  } else {
-                    // Format: "Monday", "Tuesday", etc. for last week
-                    // Or "29 March" for older dates
-                    const dayDiff = Math.round((now - date) / (1000 * 60 * 60 * 24));
-                    if (dayDiff < 7) {
-                      dateKey = date.toLocaleDateString([], { weekday: 'long' });
-                    } else {
-                      dateKey = `${date.getDate()} ${date.toLocaleDateString([], { month: 'long' })}`;
-                    }
-                  }
-                  
-                  if (!messagesByDate[dateKey]) {
-                    messagesByDate[dateKey] = [];
-                  }
-                  messagesByDate[dateKey].push(msg);
-                });
-                
-                // Render messages grouped by date
-                return Object.entries(messagesByDate).map(([dateKey, groupMessages]) => (
-                  <div key={dateKey} className="message-group mb-4">
-                    {/* Date Header */}
-                    <div className="date-separator text-center my-3">
-                      <span className="date-label bg-light px-3 py-1 rounded-pill small text-muted">
-                        {dateKey}
+              messages.map((msg, index) => {
+                if (msg.type === 'status') {
+                  return (
+                    <div key={msg.id || index} className="status-message text-center my-2">
+                      <span className="status-badge px-2 py-1">
+                        {msg.text}
                       </span>
                 </div>
-                    
-                    {/* Messages for this date */}
-                    {groupMessages.map((msg, index) => {
-                      const messageContent = msg.text || msg.content || msg.message || "";
-                      const isSentByMe = String(msg.senderId) === String(userId);
-                      const timestamp = new Date(msg.timestamp || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      const isEmojiOnly = isEmojiOnlyMessage(messageContent);
-                      
-                      return (
-                        <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
-                          <div style={{maxWidth: "70%"}}>
-                            <div 
-                              className={`message-bubble ${isSentByMe ? "sent" : "received"} ${isEmojiOnly ? "emoji-message" : ""}`}
-                              style={{
-                                fontSize: isEmojiOnly ? "2rem" : "inherit",
-                                padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem 1rem",
-                                backgroundColor: isEmojiOnly ? "transparent" : "",
-                                color: isEmojiOnly ? "inherit" : "",
-                                textShadow: isEmojiOnly ? "none" : "",
-                                fontFamily: "Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Android Emoji, EmojiSymbols, sans-serif"
-                              }}
-                            >
-                              {messageContent}
-                              {!isEmojiOnly && (
-                                <div className="message-options">
-                                  <button className="btn" onClick={() => {/* Add your message options handler here */}}>
-                                    <i className="fas fa-ellipsis-v"></i>
-                                  </button>
+                  );
+                }
+
+                const messageContent = msg.text || msg.content || msg.message || "";
+                const isSentByMe = String(msg.senderId) === String(userId);
+                const timestamp = new Date(msg.timestamp || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const isEmojiOnly = isEmojiOnlyMessage(messageContent);
+                
+                return (
+                  <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
+                    <div style={{maxWidth: "70%"}}>
+                      <div 
+                        className={`message-bubble ${isSentByMe ? "sent" : "received"} ${isEmojiOnly ? "emoji-message" : ""}`}
+                        style={{
+                          fontSize: isEmojiOnly ? "2rem" : "inherit",
+                          padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem 1rem",
+                          backgroundColor: isEmojiOnly ? "transparent" : "",
+                          color: isEmojiOnly ? "inherit" : "",
+                          textShadow: isEmojiOnly ? "none" : "",
+                          fontFamily: "Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Android Emoji, EmojiSymbols, sans-serif"
+                        }}
+                      >
+                        {messageContent}
+                        {!isEmojiOnly && (
+                          <div className="message-options">
+                            <button className="btn" onClick={() => {/* Add your message options handler here */}}>
+                              <i className="fas fa-ellipsis-v"></i>
+                            </button>
               </div>
-                              )}
-                            </div>
-                            <div className="message-timestamp">
-                              {formatTime(msg.timestamp)}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-                ));
-              })()
+                        )}
+                      </div>
+                      <div className="message-timestamp">
+                        {formatTime(msg.timestamp)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="text-center text-muted mt-4">
                 No messages yet. Send a message to start the conversation!
