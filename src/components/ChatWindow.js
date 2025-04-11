@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { FaPhoneAlt, FaVideo, FaPhoneSlash, FaPaperPlane, FaSmile } from "react-icons/fa";
+import { FaPhoneAlt, FaVideo, FaPhoneSlash, FaPaperPlane, FaSmile, FaBell, FaBellSlash, FaCamera, FaEllipsisV, FaArrowLeft, FaShieldAlt, FaFlag } from "react-icons/fa";
 import Peer from "peerjs";
 import { io } from "socket.io-client";
 import { updatePeerId, getFriend } from "../services/friendService";
@@ -19,6 +19,13 @@ const ChatWindow = ({ friendSlug }) => {
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showFriendProfile, setShowFriendProfile] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(true);
+  const [sharedMedia, setSharedMedia] = useState([
+    { type: 'image', url: 'https://picsum.photos/200/300?random=1', date: '2 weeks ago' },
+    { type: 'image', url: 'https://picsum.photos/200/300?random=2', date: '3 weeks ago' },
+    { type: 'image', url: 'https://picsum.photos/200/300?random=3', date: '1 month ago' }
+  ]);
 
   const myVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -1206,42 +1213,204 @@ const ChatWindow = ({ friendSlug }) => {
   // Add debugging right before rendering to see what messages are being mapped
   console.log("⭐️ RENDERING COMPONENT, messages state:", messages);
 
+  // Add this function to handle profile click
+  const toggleFriendProfile = () => {
+    setShowFriendProfile(!showFriendProfile);
+  };
+
+  // Add this toggle function
+  const toggleNotifications = () => {
+    setShowNotifications(!showNotifications);
+  };
+
+  // Add this function to handle blocking
+  const handleBlock = () => {
+    if (window.confirm(`Are you sure you want to block ${friendName}?`)) {
+      // Implement blocking functionality here
+      alert(`${friendName} has been blocked.`);
+      toggleFriendProfile();
+    }
+  };
+
+  // Add this function to handle reporting
+  const handleReport = () => {
+    if (window.confirm(`Are you sure you want to report ${friendName}?`)) {
+      // Implement reporting functionality here
+      alert(`${friendName} has been reported.`);
+      toggleFriendProfile();
+    }
+  };
+
+  // Helper function to format dates for the message groups
+  const formatMessageDate = (timestamp) => {
+    const messageDate = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Reset hours to compare only dates
+    const messageDay = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate());
+    const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const yesterdayDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+    
+    if (messageDay.getTime() === todayDay.getTime()) {
+      return "Today";
+    } else if (messageDay.getTime() === yesterdayDay.getTime()) {
+      return "Yesterday";
+    } else {
+      const options = { weekday: 'long' };
+      // Check if the message is from this week
+      const dayDiff = Math.floor((todayDay - messageDay) / (1000 * 60 * 60 * 24));
+      if (dayDiff < 7) {
+        return messageDate.toLocaleDateString(undefined, options);
+      } else {
+        // If older than a week, show the actual date
+        return messageDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      }
+    }
+  };
+
+  // Add this state for message options
+  const [activeMessageId, setActiveMessageId] = useState(null);
+
+  // Add this function to handle message options
+  const handleMessageOptions = (messageId) => {
+    setActiveMessageId(activeMessageId === messageId ? null : messageId);
+  };
+
   return (
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
       {loading ? (
         <div className="text-center mt-4">Loading chat...</div>
       ) : (
         <>
-          <div className="chat-header bg-light p-2 border-bottom d-flex align-items-center justify-content-between">
-            <div className="d-flex align-items-center">
-              <div className="me-2 bg-secondary text-white rounded-circle d-flex justify-content-center align-items-center"
-                style={{ width: "40px", height: "40px" }}>
-                {friendName ? friendName.charAt(0) : "?"}
+          <div className="chat-header">
+            <div className="d-flex align-items-center cursor-pointer" onClick={toggleFriendProfile}>
+              <div className="avatar-circle">
+                {friendName ? friendName.charAt(0).toUpperCase() : "?"}
               </div>
-              <div className="flex-grow-1">
-                <h5 className="mb-0">{friendName || "Unknown"}</h5>
+              <div className="friend-info">
+                <h5 className="friend-name">{friendName || "Unknown"}</h5>
                 <span className={`status-text ${onlineStatus ? 'text-success' : 'text-secondary'}`}>
                   {onlineStatus ? "Active now" : "Offline"}
                 </span>
               </div>
             </div>
-            <div className="d-flex">
+            <div className="header-actions">
               {!activeCall ? (
                 <>
-                  <button className="btn btn-outline-secondary me-2" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")} title="Start audio call">
-                    <FaPhoneAlt /> <span className="d-none d-md-inline"></span>
+                  <button className="header-btn" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")} title="Start audio call">
+                    <FaPhoneAlt />
                   </button>
-                  <button className="btn btn-outline-secondary" onClick={() => startCall(friendId, friendPeerId, friendName, "video")} title="Start video call">
-                    <FaVideo /> <span className="d-none d-md-inline"></span>
+                  <button className="header-btn" onClick={() => startCall(friendId, friendPeerId, friendName, "video")} title="Start video call">
+                    <FaVideo />
                   </button>
                 </>
               ) : (
-                <button className="btn btn-danger" onClick={endCall}>
-                  <FaPhoneSlash /> End Call
+                <button className="header-btn end-call" onClick={endCall}>
+                  <FaPhoneSlash />
                 </button>
               )}
             </div>
           </div>
+
+          {/* Friend Profile Modal */}
+          {showFriendProfile && (
+            <div className="friend-profile-modal">
+              <div className="friend-profile-content">
+                <div className="friend-profile-header">
+                  <button className="close-btn" onClick={toggleFriendProfile}>
+                    <FaArrowLeft />
+                  </button>
+                  <h4>Contact Info</h4>
+                </div>
+                <div className="friend-profile-body">
+                  <div className="friend-profile-avatar">
+                    <div className="avatar-container">
+                      <div className="avatar">
+                        {friendName ? friendName.charAt(0).toUpperCase() : "?"}
+                      </div>
+                      <div className="avatar-change">
+                        <FaCamera />
+                      </div>
+                    </div>
+                    <h3 className="mt-3">{friendName}</h3>
+                    <p className={`status ${onlineStatus ? 'online' : 'offline'}`}>
+                      {onlineStatus ? "Online" : "Offline"}
+                    </p>
+                    <div className="action-buttons">
+                      <button className="action-btn message" onClick={toggleFriendProfile}>
+                        <span className="action-icon">💬</span>
+                        <span>Message</span>
+                      </button>
+                      <button className="action-btn call" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")}>
+                        <span className="action-icon">📞</span>
+                        <span>Call</span>
+                      </button>
+                      <button className="action-btn video" onClick={() => startCall(friendId, friendPeerId, friendName, "video")}>
+                        <span className="action-icon">📹</span>
+                        <span>Video</span>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="friend-info-section">
+                    <div className="info-item">
+                      <div className="info-label">About</div>
+                      <div className="info-value">Hey there! I'm using Luxora Chat.</div>
+                    </div>
+                    
+                    <div className="info-item">
+                      <div className="info-label">Email</div>
+                      <div className="info-value">{friendName?.toLowerCase().replace(/\s+/g, '')}@example.com</div>
+                    </div>
+                    
+                    <div className="info-item">
+                      <div className="info-label">Media, Links and Docs</div>
+                      <div className="info-value media-preview">
+                        {sharedMedia.map((media, index) => (
+                          <div className="media-item" key={index}>
+                            <img src={media.url} alt="Shared media" />
+                            <div className="media-date">{media.date}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="view-all">
+                        See all
+                      </div>
+                    </div>
+                    
+                    <div className="info-item">
+                      <div className="info-label">Notifications</div>
+                      <div className="notifications-row">
+                        <div className="notifications-text">
+                          {showNotifications ? 'Notifications are ON' : 'Notifications are OFF'}
+                        </div>
+                        <div className="toggle-switch" onClick={toggleNotifications}>
+                          <input 
+                            type="checkbox" 
+                            id="notification-toggle" 
+                            checked={showNotifications} 
+                            onChange={toggleNotifications} 
+                          />
+                          <label htmlFor="notification-toggle"></label>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="info-item danger-zone">
+                      <div className="danger-action" onClick={handleBlock}>
+                        <FaShieldAlt className="danger-icon" /> Block {friendName}
+                      </div>
+                      <div className="danger-action" onClick={handleReport}>
+                        <FaFlag className="danger-icon" /> Report {friendName}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Incoming Call UI */}
           {incomingCall && (
@@ -1303,56 +1472,87 @@ const ChatWindow = ({ friendSlug }) => {
           {/* Chat Messages Body */}
           <div className="chat-body flex-grow-1 overflow-auto p-3" ref={messageContainerRef}>
             {Array.isArray(messages) && messages.length > 0 ? (
-              messages.map((msg, index) => {
-                if (msg.type === 'status') {
-                  return (
-                    <div key={msg.id || index} className="status-message text-center my-2">
-                      <span className="status-badge px-2 py-1">
-                        {msg.text}
-                      </span>
-                </div>
-                  );
-                }
-
-                const messageContent = msg.text || msg.content || msg.message || "";
-                const isSentByMe = String(msg.senderId) === String(userId);
-                const timestamp = new Date(msg.timestamp || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const isEmojiOnly = isEmojiOnlyMessage(messageContent);
+              (() => {
+                // Group messages by date
+                const messagesByDate = {};
                 
-                return (
-                  <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
-                    <div style={{maxWidth: "70%"}}>
-                      <div 
-                        className={`message-bubble ${isSentByMe ? "sent" : "received"} ${isEmojiOnly ? "emoji-message" : ""}`}
-                        style={{
-                          fontSize: isEmojiOnly ? "2rem" : "inherit",
-                          padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem 1rem",
-                          backgroundColor: isEmojiOnly ? "transparent" : "",
-                          color: isEmojiOnly ? "inherit" : "",
-                          textShadow: isEmojiOnly ? "none" : "",
-                          fontFamily: "Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Android Emoji, EmojiSymbols, sans-serif"
-                        }}
-                      >
-                        {messageContent}
-                        {!isEmojiOnly && (
-                          <div className="message-options">
-                            <button className="btn" onClick={() => {/* Add your message options handler here */}}>
-                              <i className="fas fa-ellipsis-v"></i>
-                            </button>
+                // Process messages
+                messages.forEach(msg => {
+                  const timestamp = msg.timestamp || msg.createdAt || new Date().toISOString();
+                  const dateKey = formatMessageDate(timestamp);
+                  
+                  if (!messagesByDate[dateKey]) {
+                    messagesByDate[dateKey] = [];
+                  }
+                  messagesByDate[dateKey].push(msg);
+                });
+                
+                // Render messages grouped by date
+                return Object.entries(messagesByDate).map(([dateKey, groupMessages]) => (
+                  <div key={dateKey} className="message-group">
+                    <div className="date-separator text-center my-2">
+                      <span className="date-badge">{dateKey}</span>
+                </div>
+                    
+                    {groupMessages.map((msg, index) => {
+                      if (msg.type === 'status') {
+                        return (
+                          <div key={msg.id || index} className="status-message text-center my-2">
+                            <span className="status-badge px-2 py-1">
+                              {msg.text}
+                            </span>
               </div>
-                        )}
-                      </div>
-                      <div className="message-timestamp">
-                        {formatTime(msg.timestamp)}
-                      </div>
-                    </div>
+                        );
+                      }
+                      
+                      const messageContent = msg.text || msg.content || msg.message || "";
+                      const isSentByMe = String(msg.senderId) === String(userId);
+                      const isEmojiOnly = isEmojiOnlyMessage(messageContent);
+                      
+                      return (
+                        <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
+                          <div style={{maxWidth: "70%"}}>
+                            <div 
+                              className={`message-bubble ${isSentByMe ? "sent" : "received"} ${isEmojiOnly ? "emoji-message" : ""}`}
+                              style={{
+                                fontSize: isEmojiOnly ? "2rem" : "inherit",
+                                padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem 1rem",
+                                backgroundColor: isEmojiOnly ? "transparent" : "",
+                                color: isEmojiOnly ? "inherit" : "",
+                                textShadow: isEmojiOnly ? "none" : "",
+                                fontFamily: "Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Android Emoji, EmojiSymbols, sans-serif"
+                              }}
+                            >
+                              {messageContent}
+                              {!isEmojiOnly && (
+                                <div className="message-options">
+                                  <button className="btn" onClick={() => handleMessageOptions(msg.id || index)}>
+                                    <FaEllipsisV />
+                                  </button>
+                                  {activeMessageId === (msg.id || index) && (
+                                    <div className="message-options-menu">
+                                      <div className="message-option-item">Forward</div>
+                                      <div className="message-option-item">Reply</div>
+                                      <div className="message-option-item">Star</div>
+                                      <div className="message-option-item delete">Delete</div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div className="message-timestamp">
+                              {formatTime(msg.timestamp)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })
+                ));
+              })()
             ) : (
               <div className="text-center text-muted mt-4">
-                No messages yet. Send a message to start the conversation!
-                {!Array.isArray(messages) && <div className="text-danger">Error: messages is not an array</div>}
+                No messages yet. Start the conversation!
               </div>
             )}
           </div>
