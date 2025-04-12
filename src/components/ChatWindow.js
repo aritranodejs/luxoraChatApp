@@ -41,6 +41,10 @@ const ChatWindow = ({ friendSlug }) => {
 
   const messageContainerRef = useRef(null);
 
+  // Add these state variables at the top of your component
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editMessageText, setEditMessageText] = useState("");
+
   // Add this new function to scroll to bottom
   const scrollToBottom = () => {
     if (messageContainerRef.current) {
@@ -976,116 +980,182 @@ const ChatWindow = ({ friendSlug }) => {
     callHelper.clearIncomingCall();
   }, [incomingCall, friendSlug, userId]);
 
-  // Send Chat Message
+  // Update function to handle message options
+  const handleMessageOptions = (messageId) => {
+    setActiveMessageId(activeMessageId === messageId ? null : messageId);
+  };
+
+  // Add this function to handle starting message editing
+  const handleEditMessage = (messageId, messageContent) => {
+    setEditingMessageId(messageId);
+    setEditMessageText(messageContent);
+    setInput(messageContent);
+    setActiveMessageId(null);
+  };
+
+  // Update the sendMessage function to maintain original functionality
   const sendMessage = async () => {
-    if (input.trim() !== "") {
+    // Determine the text to send based on whether we're editing
+    const textToSend = input.trim();
+    
+    // If input is empty, do nothing
+    if (!textToSend) return;
+    
+    // If we're editing a message
+    if (editingMessageId) {
       try {
-        // Generate a temporary ID to track this message
-        const tempId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        // Update in local state first
+        const updatedMessages = messages.map(msg => {
+          if ((msg.id || msg._id) === editingMessageId) {
+            return {
+              ...msg,
+              text: textToSend,
+              content: textToSend, // Handle different message formats
+              message: textToSend, // Handle different message formats
+              edited: true
+            };
+          }
+          return msg;
+        });
         
-        // Create message object that will be consistent for both API and socket
-        const messageData = {
-          id: tempId,
-          senderId: userId,
-          receiverId: friendId,
-          text: input.trim(),
-          timestamp: new Date().toISOString(),
-          _locally_added: true // Mark as locally added
-        };
-
-        // Add to tracking set to prevent duplicate from socket
-        sentMessagesRef.current.add(input.trim());
-
-        // Update UI immediately for better user experience
-        setMessages(prevMessages => [...prevMessages, messageData]);
-
-        // Reset input field immediately for better UX
+        setMessages(updatedMessages);
+        
+        // Reset edit state
+        setEditingMessageId(null);
+        setEditMessageText("");
         setInput("");
         
-        // First save message to database
-        const response = await sendMessages(friendSlug, input.trim());
-        console.log("📤 Message sent response:", response?.data);
+        // Here you would call your API to update the message on the server
+        // Example: await updateMessage(editingMessageId, textToSend);
         
-        // Get the proper timestamp from the response
-        let messageTimestamp = new Date().toISOString();
-        let messageId = tempId;
-        
-        // Extract proper data from response
-        if (response?.data) {
-          if (response.data.id) messageId = response.data.id;
-          else if (response.data.data?.id) messageId = response.data.data.id;
-          
-          if (response.data.createdAt) messageTimestamp = response.data.createdAt;
-          else if (response.data.data?.createdAt) messageTimestamp = response.data.data.createdAt;
-          else if (response.data.timestamp) messageTimestamp = response.data.timestamp;
-          else if (response.data.data?.timestamp) messageTimestamp = response.data.data.timestamp;
-        }
-        
-        console.log("📤 Using ID and timestamp for message:", messageId, messageTimestamp);
-        
-        // Update the message with the proper ID and timestamp from the server
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg.id === tempId 
-              ? { 
-                  ...msg, 
-                  id: messageId, 
-                  timestamp: messageTimestamp,
-                  _locally_added: false
-                } 
-              : msg
-          )
-        );
-        
-        // Send to direct rooms to ensure delivery
-        if (socket.current) {
-          // Send to multiple possible room formats to ensure delivery
-          const possibleRooms = [
-            `room-${userId}-${friendId}`,
-            `room-${friendId}-${userId}`,
-            `${friendId}` // Direct to user
-          ];
-          
-          for (const room of possibleRooms) {
-            console.log(`📤 Emitting message to room: ${room}`);
-            
-            // Send to the room with all possible formats
-            socket.current.emit("sendMessage", {
-              id: messageId,
-              senderId: userId,
-              receiverId: friendId,
-              message: input.trim(), // 'message' format
-              content: input.trim(), // 'content' format
-              text: input.trim(),    // 'text' format
-              timestamp: messageTimestamp,
-              room: room
-            });
-          }
-          
-          console.log("📤 Message emitted to all possible rooms");
-        }
-        
-        // Clean up sent message tracking after 10 seconds
-        setTimeout(() => {
-          sentMessagesRef.current.delete(input.trim());
-        }, 10000);
-        
-        // After sending message, scroll to bottom
+        // Scroll to bottom after editing
         setTimeout(scrollToBottom, 100);
+        
+        return; // Exit the function early
+      } catch (error) {
+        console.error("Error updating message:", error);
+      }
+    }
+    
+    // Regular send message logic
+    try {
+      // Generate a temporary ID to track this message
+      const tempId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+       
+      // Create message object that will be consistent for both API and socket
+      const messageData = {
+        id: tempId,
+          senderId: userId,
+          receiverId: friendId,
+        text: textToSend,
+        timestamp: new Date().toISOString(),
+        _locally_added: true // Mark as locally added
+        };
+
+      // Add to tracking set to prevent duplicate from socket
+      sentMessagesRef.current.add(textToSend);
+
+      // Update UI immediately for better user experience
+      setMessages(prevMessages => [...prevMessages, messageData]);
+
+      // Reset input field immediately for better UX
+        setInput("");
+       
+      // First save message to database
+      const response = await sendMessages(friendSlug, textToSend);
+      console.log("📤 Message sent response:", response?.data);
+       
+      // Get the proper timestamp from the response
+      let messageTimestamp = new Date().toISOString();
+      let messageId = tempId;
+       
+      // Extract proper data from response
+      if (response?.data) {
+        if (response.data.id) messageId = response.data.id;
+        else if (response.data.data?.id) messageId = response.data.data.id;
+         
+        if (response.data.createdAt) messageTimestamp = response.data.createdAt;
+        else if (response.data.data?.createdAt) messageTimestamp = response.data.data.createdAt;
+        else if (response.data.timestamp) messageTimestamp = response.data.timestamp;
+        else if (response.data.data?.timestamp) messageTimestamp = response.data.data.timestamp;
+      }
+       
+      console.log("📤 Using ID and timestamp for message:", messageId, messageTimestamp);
+       
+      // Update the message with the proper ID and timestamp from the server
+      setMessages(prevMessages => 
+        prevMessages.map(msg => 
+          msg.id === tempId 
+            ? { 
+                ...msg, 
+                id: messageId, 
+                timestamp: messageTimestamp,
+                _locally_added: false
+              } 
+            : msg
+        )
+      );
+       
+      // Send to direct rooms to ensure delivery
+      if (socket.current) {
+        // Send to multiple possible room formats to ensure delivery
+        const possibleRooms = [
+          `room-${userId}-${friendId}`,
+          `room-${friendId}-${userId}`,
+          `${friendId}` // Direct to user
+        ];
+         
+        for (const room of possibleRooms) {
+          console.log(`📤 Emitting message to room: ${room}`);
+           
+          // Send to the room with all possible formats
+          socket.current.emit("sendMessage", {
+            id: messageId,
+            senderId: userId,
+            receiverId: friendId,
+            message: textToSend, // 'message' format
+            content: textToSend, // 'content' format
+            text: textToSend,    // 'text' format
+            timestamp: messageTimestamp,
+            room: room
+          });
+        }
+         
+        console.log("📤 Message emitted to all possible rooms");
+      }
+       
+      // Clean up sent message tracking after 10 seconds
+      setTimeout(() => {
+        sentMessagesRef.current.delete(textToSend);
+      }, 10000);
+       
+      // After sending message, scroll to bottom
+      setTimeout(scrollToBottom, 100);
+
+      // Close emoji picker if open
+      if (showEmojiPicker) {
+        setShowEmojiPicker(false);
+      }
 
       } catch (error) {
         console.error("Error sending message:", error);
-        
-        // If API fails, mark message as failed but keep it in the UI
-        setMessages(prevMessages => 
-          prevMessages.map(msg => 
-            msg._locally_added 
-              ? { ...msg, _failed: true } 
-              : msg
-          )
-        );
-      }
+       
+      // If API fails, mark message as failed but keep it in the UI
+      setMessages(prevMessages => 
+        prevMessages.map(msg => 
+          msg._locally_added 
+            ? { ...msg, _failed: true } 
+            : msg
+        )
+      );
     }
+  };
+
+  // Add cancel edit function
+  const cancelEdit = () => {
+    setEditingMessageId(null);
+    setEditMessageText("");
+    setInput("");
   };
 
   // Check if message contains only emojis
@@ -1272,11 +1342,6 @@ const ChatWindow = ({ friendSlug }) => {
 
   // Add this state for message options
   const [activeMessageId, setActiveMessageId] = useState(null);
-
-  // Add this function to handle message options
-  const handleMessageOptions = (messageId) => {
-    setActiveMessageId(activeMessageId === messageId ? null : messageId);
-  };
 
   return (
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
@@ -1524,6 +1589,7 @@ const ChatWindow = ({ friendSlug }) => {
                               }}
                             >
                               {messageContent}
+                              {msg.edited && <span className="edited-indicator"> (edited)</span>}
                               {!isEmojiOnly && (
                                 <div className="message-options">
                                   <button className="btn" onClick={() => handleMessageOptions(msg.id || index)}>
@@ -1533,8 +1599,14 @@ const ChatWindow = ({ friendSlug }) => {
                                     <div className="message-options-menu">
                                       <div className="message-option-item">Forward</div>
                                       <div className="message-option-item">Reply</div>
-                                      <div className="message-option-item">Star</div>
-                                      <div className="message-option-item delete">Delete</div>
+                                      {isSentByMe ? (
+                                        <>
+                                          <div className="message-option-item" onClick={() => handleEditMessage(msg.id || index, messageContent)}>Edit</div>
+                                          <div className="message-option-item delete">Delete</div>
+                                        </>
+                                      ) : (
+                                        <div className="message-option-item">Report</div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1560,6 +1632,16 @@ const ChatWindow = ({ friendSlug }) => {
           {/* Chat Input + Send Button */}
           <div className="chat-footer d-flex p-2 border-top">
             <div className="position-relative d-flex flex-grow-1">
+              {editingMessageId && (
+                <div className="edit-indicator">
+                  <span>Editing message</span>
+                  <button className="cancel-edit-btn" onClick={() => {
+                    setEditingMessageId(null);
+                    setEditMessageText("");
+                    setInput("");
+                  }}>×</button>
+                </div>
+              )}
               <button 
                 className="emoji-btn" 
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -1570,214 +1652,13 @@ const ChatWindow = ({ friendSlug }) => {
               >
                 <FaSmile />
               </button>
-              
-              {showEmojiPicker && (
-                <div 
-                  className="emoji-picker-container" 
-                  ref={emojiPickerRef}
-                  style={{
-                    position: 'absolute', 
-                    bottom: '50px', 
-                    left: '0', 
-                    zIndex: 10,
-                    backgroundColor: 'white',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '0.25rem',
-                    width: '320px',
-                    maxHeight: '350px',
-                    overflow: 'auto'
-                  }}
-                >
-                  {/* Simple hardcoded emoji grid for reliability */}
-                  <div className="p-2">
-                    <div className="d-flex flex-wrap">
-                      {/* Common smileys */}
-                      {["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", 
-                        "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚",
-                        "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🤩",
-                        "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖",
-                        "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯"
-                      ].map((emoji, index) => (
-                        <div 
-                          key={index} 
-                          onClick={() => onEmojiClick({ emoji })}
-                          className="emoji-item"
-                        >
-                          {emoji}
-                        </div>
-                      ))}
-                    </div>
-                    
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Hand Gestures</div>
-                      <div className="d-flex flex-wrap">
-                        {["👍", "👎", "👌", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉",
-                          "👆", "👇", "☝️", "👋", "🤚", "🖐️", "✋", "🖖", "👏", "🙌"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Hearts & Love</div>
-                      <div className="d-flex flex-wrap">
-                        {["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔",
-                          "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "♥️"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Animals</div>
-                      <div className="d-flex flex-wrap">
-                        {["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯",
-                          "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🦆", "🦅"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Food & Drink</div>
-                      <div className="d-flex flex-wrap">
-                        {["🍎", "🍓", "🍒", "🍕", "🍔", "🍟", "🍖", "🍗", "🥩", "🥓",
-                          "🌮", "🌯", "🍣", "🍤", "🍦", "🍩", "🍰", "🧁", "🥂", "☕"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Travel & Places</div>
-                      <div className="d-flex flex-wrap">
-                        {["🏠", "🏡", "🏢", "🏣", "🏤", "🏥", "🏦", "🏨", "🏩", "🏪",
-                          "🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "✈️"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Flags</div>
-                      <div className="d-flex flex-wrap">
-                        {["🇺🇸", "🇬🇧", "🇨🇦", "🇦🇺", "🇮🇳", "🇯🇵", "🇰🇷", "🇫🇷", "🇩🇪", "🇮🇹", 
-                          "🇧🇷", "🇲🇽", "🇪🇸", "🇷🇺", "🇨🇳", "🇿🇦", "🇸🇦", "🇦🇪", "🇳🇬", "🇪🇬",
-                          "🇵🇰", "🇵🇭", "🇸🇪", "🇳🇴", "🇫🇮", "🇵🇹", "🇮🇪", "🇧🇪", "🇦🇷", "🇨🇱",
-                          "🇨🇴", "🇵🇪", "🇧🇴", "🇻🇪", "🇹🇷", "🇬🇷", "🇮🇱", "🇮🇷", "🇿🇼", "🇰🇪"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Activities & Sports</div>
-                      <div className="d-flex flex-wrap">
-                        {["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🎱", "🏓", "🏸",
-                          "🥊", "🥋", "🎣", "🏹", "🎯", "🥌", "🛷", "🎮", "🎲", "♟️"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Objects</div>
-                      <div className="d-flex flex-wrap">
-                        {["📱", "💻", "⌚", "📷", "🔋", "💡", "🔍", "🔑", "🔒", "📁",
-                          "📅", "📌", "📎", "✂️", "📝", "📚", "📰", "🎵", "🎬", "🎨"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-2">
-                      <div className="small fw-bold mb-1">Symbols</div>
-                      <div className="d-flex flex-wrap">
-                        {["💯", "⚠️", "🚫", "✅", "❌", "⭕", "📛", "🔞", "☢️", "☣️",
-                          "⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️", "↕️", "↔️"
-                        ].map((emoji, index) => (
-                          <div 
-                            key={index} 
-                            onClick={() => onEmojiClick({ emoji })}
-                            className="emoji-item"
-                          >
-                            {emoji}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <input 
-                type="text" 
-                className="form-control ms-2" 
-                value={input} 
-                onChange={(e) => setInput(e.target.value)} 
-                placeholder="Type a message..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
+              <input
+                type="text"
+                placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                className={`form-control ms-2 ${editingMessageId ? 'editing' : ''}`}
               />
             </div>
             <button className="btn btn-primary ms-2" onClick={sendMessage}>
