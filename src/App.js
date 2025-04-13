@@ -49,7 +49,7 @@ function AppContent() {
               <Route path="/verify-otp" element={<Navigate to="/chat" replace />} />
               
               {/* Main app routes */}
-              <Route path="/chat" element={<h1 className="text-muted text-center app-title">Welcome to LuxoraChat</h1>} />
+              <Route path="/chat" element={<h1 className="text-muted text-center app-title">Welcome to <span className="text-luxora">Luxora</span><span className="text-chat">Chat</span></h1>} />
               <Route path="/chat/search" element={<Friends onlyFriends={false} />} />
               <Route path="/chat/:friendSlug" element={<Chat onClose={closeDrawer} />} />
               

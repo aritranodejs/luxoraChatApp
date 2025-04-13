@@ -9,6 +9,14 @@ html {
     transition: background 0.3s, color 0.3s;
 }
 
+span.text-luxora {
+    color: #6a17c6;
+}
+
+span.text-chat {
+    color: #bc17e2;
+}
+
 body.dark-mode {
     background: #111b21;
     color: white;
