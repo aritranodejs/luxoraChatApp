@@ -182,7 +182,7 @@
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
-/* Improve message display */
+/* Message container and layout improvements */
 .message-container {
   flex: 1;
   display: flex;
@@ -357,7 +357,7 @@
   position: relative;
   padding: 12px 16px;
   border-radius: 18px;
-  margin-bottom: 8px;
+  margin-bottom: 2px; /* Reduced to accommodate timestamp */
   max-width: 85%;
   word-break: break-word;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -382,16 +382,43 @@
   border-bottom-left-radius: 4px;
 }
 
-/* Timestamp improvements */
+/* Fixed timestamp styling */
 .message-timestamp {
   font-size: 0.7rem;
   color: #6c757d;
-  margin-top: 0.25rem;
+  padding: 0 5px;
   text-align: right;
+  margin-bottom: 0;
+  margin-top: 2px;
+  width: 100%;
   display: flex;
   align-items: center;
+}
+
+/* Show timestamp on hover */
+.d-flex.mb-2:hover .message-timestamp {
+  opacity: 1;
+}
+
+/* Ensure timestamp is visible all the time (important) */
+.message-timestamp {
+  opacity: 1 !important;
+}
+
+/* Align timestamps based on message type */
+.message-bubble.sent + .message-timestamp {
   justify-content: flex-end;
-  gap: 2px;
+  padding-right: 8px;
+}
+
+.message-bubble.received + .message-timestamp {
+  justify-content: flex-start;
+  padding-left: 8px;
+}
+
+/* Dark theme timestamp */
+body.dark-mode .message-timestamp {
+  color: #8e8e8e;
 }
 
 /* Message options (three dots) */
@@ -1462,6 +1489,16 @@ body.dark-mode .encryption-indicator {
   align-items: center;
   margin-left: 4px;
   font-size: 0.7rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.message-bubble.sent + .message-timestamp .message-status {
+  order: 2;
+}
+
+.message-bubble.received + .message-timestamp .message-status {
+  order: 2;
 }
 
 .message-status .text-primary {
@@ -1482,4 +1519,27 @@ body.dark-mode .message-status .text-primary {
 
 body.dark-mode .message-status .text-danger {
   color: #ea868f !important;
+}
+
+/* Message wrapper adjustments */
+.d-flex.mb-2 {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px !important;
+  width: 100%;
+}
+
+.d-flex.mb-2.justify-content-end {
+  align-items: flex-end;
+}
+
+.d-flex.mb-2.justify-content-start {
+  align-items: flex-start;
+}
+
+/* Adjust container of message bubble */
+.d-flex.mb-2 > div {
+  display: flex;
+  flex-direction: column;
+  max-width: 70%;
 }
