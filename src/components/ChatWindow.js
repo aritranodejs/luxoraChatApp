@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { FaPhoneAlt, FaVideo, FaPhoneSlash, FaPaperPlane, FaSmile, FaBell, FaBellSlash, FaCamera, FaEllipsisV, FaArrowLeft, FaShieldAlt, FaFlag } from "react-icons/fa";
+import { FaPhoneAlt, FaVideo, FaPhoneSlash, FaPaperPlane, FaSmile, FaBell, FaBellSlash, FaCamera, FaEllipsisV, FaArrowLeft, FaShieldAlt, FaFlag, FaExternalLinkAlt, FaTimes } from "react-icons/fa";
 import Peer from "peerjs";
 import { io } from "socket.io-client";
 import { updatePeerId, getFriend } from "../services/friendService";
@@ -9,6 +9,71 @@ import "../styles/ChatWindow.css"; // Import the CSS file
 import * as callHelper from "../utils/callHelper"; // Import call helper utilities
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
+
+// Add the LinkPreview component before the ChatWindow component
+const LinkPreview = ({ url, preview, isLoading }) => {
+  const [collapsed, setCollapsed] = useState(false);
+  
+  if (isLoading) {
+    return (
+      <div className="link-preview-loading">
+        <div className="spinner-border spinner-border-sm text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+        <span className="ms-2">Loading preview...</span>
+      </div>
+    );
+  }
+  
+  if (!preview || collapsed) {
+    return collapsed ? (
+      <div className="link-preview-collapsed" onClick={() => setCollapsed(false)}>
+        <FaExternalLinkAlt size={12} className="me-1" />
+        <span className="preview-site">{new URL(url).hostname}</span>
+      </div>
+    ) : null;
+  }
+  
+  const { title, description, image, siteName, error } = preview;
+  
+  if (error) {
+    return (
+      <div className="link-preview-error">
+        <a href={url} target="_blank" rel="noopener noreferrer" className="preview-link">
+          <FaExternalLinkAlt size={12} className="me-1" />
+          {url}
+        </a>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="link-preview">
+      <div className="preview-header">
+        <span className="preview-site">{siteName}</span>
+        <button 
+          className="preview-collapse-btn" 
+          onClick={() => setCollapsed(true)}
+          aria-label="Collapse preview"
+        >
+          <FaTimes size={12} />
+        </button>
+      </div>
+      
+      <a href={url} target="_blank" rel="noopener noreferrer" className="preview-content">
+        {image && (
+          <div className="preview-image">
+            <img src={image} alt={title} onError={(e) => e.target.style.display = 'none'} />
+          </div>
+        )}
+        <div className="preview-text">
+          <h5 className="preview-title">{title}</h5>
+          {description && <p className="preview-description">{description}</p>}
+        </div>
+      </a>
+    </div>
+  );
+};
 
 const ChatWindow = ({ friendSlug }) => {
   const [messages, setMessages] = useState([]);
@@ -23,6 +88,9 @@ const ChatWindow = ({ friendSlug }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showFriendProfile, setShowFriendProfile] = useState(false);
   const [showNotifications, setShowNotifications] = useState(true);
+  const [linkPreviews, setLinkPreviews] = useState({});
+  const [loadingPreviews, setLoadingPreviews] = useState({});
+  const [inputUrls, setInputUrls] = useState([]);
   const [sharedMedia, setSharedMedia] = useState([
     { type: 'image', url: 'https://picsum.photos/200/300?random=1', date: '2 weeks ago' },
     { type: 'image', url: 'https://picsum.photos/200/300?random=2', date: '3 weeks ago' },
@@ -1138,6 +1206,7 @@ const ChatWindow = ({ friendSlug }) => {
     try {
       const textToSend = input.trim();
       setInput("");
+      setInputUrls([]); // Clear input URLs after sending
 
       if (editingMessageId) {
         // Handle message editing
@@ -1411,6 +1480,144 @@ const ChatWindow = ({ friendSlug }) => {
     }
   };
 
+  // Add this function to extract URLs from message text
+  const extractUrls = (text) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.match(urlRegex) || [];
+  };
+
+  // Function to fetch metadata for a URL
+  const fetchLinkPreview = async (url, messageId) => {
+    if (linkPreviews[url] || loadingPreviews[url]) {
+      return; // Already fetched or currently fetching
+    }
+
+    // Mark as loading
+    setLoadingPreviews(prev => ({
+      ...prev,
+      [url]: true
+    }));
+
+    try {
+      // Using Open Graph meta tags proxy service
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      
+      if (!data || !data.contents) {
+        throw new Error('Failed to fetch URL metadata');
+      }
+
+      // Parse the HTML to extract Open Graph metadata
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(data.contents, 'text/html');
+      
+      // Extract metadata
+      const title = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || 
+                    doc.querySelector('title')?.textContent || 
+                    url;
+      
+      const description = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || 
+                          doc.querySelector('meta[name="description"]')?.getAttribute('content') || 
+                          '';
+      
+      const image = doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || 
+                    doc.querySelector('meta[property="og:image:url"]')?.getAttribute('content') || 
+                    '';
+      
+      const siteName = doc.querySelector('meta[property="og:site_name"]')?.getAttribute('content') || 
+                       new URL(url).hostname.replace('www.', '');
+
+      // Store the preview data
+      setLinkPreviews(prev => ({
+        ...prev,
+        [url]: {
+          title,
+          description,
+          image,
+          siteName,
+          url
+        }
+      }));
+
+    } catch (error) {
+      console.error("Error fetching link preview:", error);
+      // Store a minimal preview
+      setLinkPreviews(prev => ({
+        ...prev,
+        [url]: {
+          title: url,
+          description: '',
+          image: '',
+          siteName: new URL(url).hostname.replace('www.', ''),
+          url,
+          error: true
+        }
+      }));
+    } finally {
+      // Mark as no longer loading
+      setLoadingPreviews(prev => {
+        const newState = { ...prev };
+        delete newState[url];
+        return newState;
+      });
+    }
+  };
+
+  // Detect links in messages and fetch previews
+  useEffect(() => {
+    // Process new messages to check for URLs
+    messages.forEach(msg => {
+      if (!msg.text) return;
+      
+      const urls = extractUrls(msg.text);
+      urls.forEach(url => {
+        // Fetch preview for each URL that doesn't already have one
+        if (!linkPreviews[url] && !loadingPreviews[url]) {
+          fetchLinkPreview(url, msg.id || msg.tempId);
+        }
+      });
+    });
+  }, [messages, linkPreviews, loadingPreviews]);
+
+  // Update handle input change to detect URLs
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setInput(value);
+    
+    // Detect URLs in input
+    const urls = extractUrls(value);
+    if (JSON.stringify(urls) !== JSON.stringify(inputUrls)) {
+      setInputUrls(urls);
+      
+      // Fetch previews for new URLs
+      urls.forEach(url => {
+        if (!linkPreviews[url] && !loadingPreviews[url]) {
+          fetchLinkPreview(url);
+        }
+      });
+    }
+  };
+
+  // Special handler for paste events to immediately detect URLs
+  const handlePaste = (e) => {
+    // Let the regular onChange event handle the paste content update
+    setTimeout(() => {
+      const value = e.target.value;
+      const urls = extractUrls(value);
+      if (urls.length > 0) {
+        setInputUrls(urls);
+        
+        // Fetch previews for new URLs
+        urls.forEach(url => {
+          if (!linkPreviews[url] && !loadingPreviews[url]) {
+            fetchLinkPreview(url);
+          }
+        });
+      }
+    }, 0);
+  };
+
   return (
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
       {loading ? (
@@ -1650,20 +1857,25 @@ const ChatWindow = ({ friendSlug }) => {
                       return (
                         <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
                           <div style={{maxWidth: "70%"}}>
-                            <div 
-                              className={`message-bubble ${isSentByMe ? "sent" : "received"} ${isEmojiOnly ? "emoji-message" : ""}`}
-                              style={{
-                                fontSize: isEmojiOnly ? "2rem" : "inherit",
-                                padding: isEmojiOnly ? "0.25rem 0.5rem" : "0.75rem 1rem",
-                                backgroundColor: isEmojiOnly ? "transparent" : "",
-                                color: isEmojiOnly ? "inherit" : "",
-                                textShadow: isEmojiOnly ? "none" : "",
-                                fontFamily: "Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Android Emoji, EmojiSymbols, sans-serif"
-                              }}
-                            >
-                              {messageContent}
-                              {msg.edited && <span className="edited-indicator"> (edited)</span>}
-                              {!isEmojiOnly && (
+                            <div className={`message-bubble ${isSentByMe ? "sent" : "received"}`} id={`message-${msg.id || index}`}>
+                              {/* Display message text */}
+                              <div className={`message-content ${isEmojiOnlyMessage(messageContent) ? 'emoji-message' : ''}`}>
+                                {messageContent}
+                                {msg.edited && <span className="edited-indicator"> (edited)</span>}
+                              </div>
+                              
+                              {/* Link Previews */}
+                              {extractUrls(messageContent).map((url, urlIndex) => (
+                                <LinkPreview 
+                                  key={`${msg.id || index}-url-${urlIndex}`}
+                                  url={url}
+                                  preview={linkPreviews[url]}
+                                  isLoading={!!loadingPreviews[url]}
+                                />
+                              ))}
+
+                              {/* Three dots options */}
+                              {(msg.senderId === userId || msg.receiverId === userId) && (
                                 <div className="message-options">
                                   <button className="btn" onClick={() => handleMessageOptions(msg.id || index)}>
                                     <FaEllipsisV />
@@ -1739,8 +1951,9 @@ const ChatWindow = ({ friendSlug }) => {
                 type="text"
                 placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                onPaste={handlePaste}
                 className={`form-control ms-2 ${editingMessageId ? 'editing' : ''}`}
               />
               
@@ -1754,6 +1967,20 @@ const ChatWindow = ({ friendSlug }) => {
                     previewPosition="none"
                     skinTonePosition="none"
                   />
+                </div>
+              )}
+              
+              {/* Input URL Previews */}
+              {inputUrls.length > 0 && (
+                <div className="input-preview-container">
+                  {inputUrls.map((url, index) => (
+                    <LinkPreview 
+                      key={`input-url-${index}`}
+                      url={url}
+                      preview={linkPreviews[url]}
+                      isLoading={!!loadingPreviews[url]}
+                    />
+                  ))}
                 </div>
               )}
             </div>
