@@ -103,13 +103,25 @@ const ChatWindow = ({ friendSlug }) => {
   // Add this new function to scroll to bottom
   const scrollToBottom = () => {
     if (messageContainerRef.current) {
+      // Get the scroll height and make sure we're at the bottom
       const scrollHeight = messageContainerRef.current.scrollHeight;
       const height = messageContainerRef.current.clientHeight;
       const maxScrollTop = scrollHeight - height;
-      messageContainerRef.current.scrollTop = maxScrollTop > 0 ? maxScrollTop : 0;
+      
+      // Use smooth scrolling for better UX
+      messageContainerRef.current.scrollTo({
+        top: maxScrollTop > 0 ? maxScrollTop : 0,
+        behavior: 'smooth'
+      });
       
       // Mark messages as read when scrolling to bottom
       markMessagesAsRead();
+      
+      // For browsers that don't support scrollTo with behavior
+      // This is a fallback
+      if (maxScrollTop > 0 && messageContainerRef.current.scrollTop < maxScrollTop) {
+        messageContainerRef.current.scrollTop = maxScrollTop;
+      }
     }
   };
 
@@ -531,6 +543,10 @@ const ChatWindow = ({ friendSlug }) => {
           }
           
           console.log("📩 Adding new message to state:", newMessage);
+          
+          // After adding a new message, scroll to bottom
+          setTimeout(scrollToBottom, 10);
+          
           return [...prevMessages, newMessage];
         });
       } else {
@@ -1137,6 +1153,7 @@ const ChatWindow = ({ friendSlug }) => {
         
         // TODO: Update message on server
         // const response = await updateMessage(editingMessageId, textToSend);
+        setTimeout(scrollToBottom, 10); // Scroll to bottom after editing
         return;
       }
 
@@ -1155,7 +1172,9 @@ const ChatWindow = ({ friendSlug }) => {
       };
       
       setMessages(prev => [...prev, tempMessage]);
-      scrollToBottom();
+      
+      // Scroll to bottom immediately after adding message to UI
+      setTimeout(scrollToBottom, 10);
       
       // Add to tracking set
       sentMessagesRef.current.add(tempId);
@@ -1173,10 +1192,22 @@ const ChatWindow = ({ friendSlug }) => {
               : msg
           )
         );
+        
+        // Scroll to bottom again after status update
+        setTimeout(scrollToBottom, 10);
+      } else {
+        // Even without server ID, update status to sent
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.tempId === tempId 
+              ? { ...msg, status: "sent" } 
+              : msg
+          )
+        );
+        
+        // Scroll to bottom again after status update
+        setTimeout(scrollToBottom, 10);
       }
-
-      // Scroll to bottom
-      scrollToBottom();
 
       } catch (error) {
       console.error("Failed to send message:", error);
