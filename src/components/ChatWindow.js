@@ -1689,7 +1689,7 @@ const ChatWindow = ({ friendSlug }) => {
                               {formatTime(msg.timestamp)}
                               {isSentByMe && (
                                 <span className="message-status ms-1">
-                                  {msg.status === "sending" && <span title="Sending">...</span>}
+                                  {msg.status === "sending" && <span title="Sent">✓</span>}
                                   {msg.status === "sent" && <span title="Sent">✓</span>}
                                   {msg.status === "delivered" && <span title="Delivered">✓✓</span>}
                                   {msg.status === "read" && <span title="Read" className="text-primary">✓✓</span>}
