@@ -81,7 +81,9 @@ const Register = () => {
   return (
     <div className="container mt-5">
       <div className="card p-4 shadow-sm mx-auto" style={{ maxWidth: "400px" }}>
-        <h3 className="text-center">Register</h3>
+        <h3 className="text-center mb-4">
+          <span className="text-luxora">Luxora</span><span className="text-chat">Chat</span>
+        </h3>
         <form onSubmit={handleSubmit}>
           <div className="mb-3">
             <label className="form-label">Name</label>

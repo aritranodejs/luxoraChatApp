@@ -388,6 +388,10 @@
   color: #6c757d;
   margin-top: 0.25rem;
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
 }
 
 /* Message options (three dots) */
@@ -763,6 +767,9 @@
   color: #8e8e8e;
   margin-top: 4px;
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 /* Improved scrollbar for dark theme */
@@ -1424,4 +1431,55 @@
 input.editing {
   background-color: rgba(13, 110, 253, 0.05);
   border-color: #0d6efd;
+}
+
+/* Encryption indicator */
+.encryption-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+body.dark-mode .encryption-indicator {
+  background-color: #202c33;
+  border-bottom: 1px solid #2a3942;
+  color: #adb5bd;
+}
+
+.encryption-icon {
+  margin-right: 5px;
+  color: #00a884;
+}
+
+/* Message status indicators */
+.message-status {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  font-size: 0.7rem;
+}
+
+.message-status .text-primary {
+  color: #0d6efd !important;
+}
+
+.message-status .text-danger {
+  color: #dc3545 !important;
+}
+
+body.dark-mode .message-status {
+  color: #adb5bd;
+}
+
+body.dark-mode .message-status .text-primary {
+  color: #6ea8fe !important;
+}
+
+body.dark-mode .message-status .text-danger {
+  color: #ea868f !important;
 }

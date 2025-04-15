@@ -44,6 +44,42 @@ const ChatWindow = ({ friendSlug }) => {
   // Add these state variables at the top of your component
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editMessageText, setEditMessageText] = useState("");
+  const [activeMessageId, setActiveMessageId] = useState(null);
+
+  // Mark messages as read function
+  const markMessagesAsRead = useCallback(() => {
+    if (!userId || !friendId || !socket.current) return;
+    
+    // Find unread messages from friend
+    const unreadMessages = messages.filter(msg => 
+      msg.senderId === friendId && 
+      msg.status !== "read" && 
+      msg.id // Only messages with server IDs
+    );
+    
+    if (unreadMessages.length > 0) {
+      console.log("Marking messages as read:", unreadMessages.length);
+      
+      // Emit read status for each message
+      unreadMessages.forEach(msg => {
+        socket.current.emit("markMessageRead", {
+          messageId: msg.id,
+          senderId: userId,
+          receiverId: friendId
+        });
+      });
+      
+      // Update local state
+      setMessages(prev => 
+        prev.map(msg => {
+          if (msg.senderId === friendId && msg.status !== "read" && msg.id) {
+            return { ...msg, status: "read" };
+          }
+          return msg;
+        })
+      );
+    }
+  }, [userId, friendId, messages]);
 
   // Add this new function to scroll to bottom
   const scrollToBottom = () => {
@@ -52,13 +88,19 @@ const ChatWindow = ({ friendSlug }) => {
       const height = messageContainerRef.current.clientHeight;
       const maxScrollTop = scrollHeight - height;
       messageContainerRef.current.scrollTop = maxScrollTop > 0 ? maxScrollTop : 0;
+      
+      // Mark messages as read when scrolling to bottom
+      markMessagesAsRead();
     }
   };
 
   // Update useEffect for messages
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+    
+    // Mark messages as read when they are loaded/updated
+    markMessagesAsRead();
+  }, [messages, markMessagesAsRead]);
 
   // Update useEffect for chat history
   useEffect(() => {
@@ -73,7 +115,8 @@ const ChatWindow = ({ friendSlug }) => {
             senderId: msg.senderId,
             receiverId: msg.receiverId,
             text: msg.content || msg.text || msg.message || "",
-            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
+            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString(),
+            status: msg.status || "sent"
           }));
           setMessages(formattedMessages);
           // Scroll to bottom after setting messages
@@ -85,7 +128,8 @@ const ChatWindow = ({ friendSlug }) => {
             senderId: msg.senderId,
             receiverId: msg.receiverId,
             text: msg.content || msg.text || "",
-            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString()
+            timestamp: msg.createdAt || msg.timestamp || new Date().toISOString(),
+            status: msg.status || "sent"
           }));
           setMessages(formattedMessages);
           // Scroll to bottom after setting messages
@@ -447,7 +491,8 @@ const ChatWindow = ({ friendSlug }) => {
             senderId, 
             receiverId, 
             text: messageContent, // Store as text for UI consistency
-            timestamp: data.timestamp || data.createdAt || new Date().toISOString()
+            timestamp: data.timestamp || data.createdAt || new Date().toISOString(),
+            status: data.status || "sent"
           };
           
           // Check if this exact message already exists to prevent duplicates
@@ -712,6 +757,58 @@ const ChatWindow = ({ friendSlug }) => {
       }
     });
 
+    // Listen for message status updates
+    socket.current.on("messageStatus", (data) => {
+      console.log("Message status update received:", data);
+      if (data.messageId && data.status) {
+        setMessages(prev => 
+          prev.map(msg => {
+            if (msg.id === data.messageId) {
+              return { ...msg, status: data.status };
+            }
+            return msg;
+          })
+        );
+      }
+    });
+
+    // Listen for message delivery confirmations 
+    socket.current.on("messageDelivered", (data) => {
+      console.log("Message delivered:", data);
+      if (data.messageId) {
+        setMessages(prev => 
+          prev.map(msg => {
+            if (msg.id === data.messageId && msg.status === "sent") {
+              return { ...msg, status: "delivered" };
+            }
+            return msg;
+          })
+        );
+      }
+    });
+
+    // Listen for message read confirmations
+    socket.current.on("messageRead", (data) => {
+      console.log("Message read:", data);
+      if (data.messageId) {
+        setMessages(prev => 
+          prev.map(msg => {
+            if (msg.id === data.messageId && 
+                (msg.status === "sent" || msg.status === "delivered")) {
+              return { ...msg, status: "read" };
+            }
+            return msg;
+          })
+        );
+      }
+    });
+
+    // When messages are viewed, emit that they've been read
+    socket.current.emit("chatOpened", {
+      userId,
+      friendId
+    });
+
     return () => {
       if (directRoom) {
         socket.current.emit("leaveChat", { room: directRoom });
@@ -729,6 +826,9 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current.off("userStatusChange");
       socket.current.off("userDisconnected");
       socket.current.off("userReconnected");
+      socket.current.off("messageStatus");
+      socket.current.off("messageDelivered");
+      socket.current.off("messageRead");
       
       // Clear the polling interval
       clearInterval(pollInterval);
@@ -769,6 +869,7 @@ const ChatWindow = ({ friendSlug }) => {
           receiverId: msg.receiverId || msg.receiver_id || 0,
           text: msg.text || msg.content || msg.message || "",
           timestamp: timestamp,
+          status: msg.status || "sent"
         };
       }).filter(msg => {
         // Filter out invalid messages
@@ -995,156 +1096,75 @@ const ChatWindow = ({ friendSlug }) => {
 
   // Update the sendMessage function to maintain original functionality
   const sendMessage = async () => {
-    // Determine the text to send based on whether we're editing
-    const textToSend = input.trim();
-    
-    // If input is empty, do nothing
-    if (!textToSend) return;
-    
-    // If we're editing a message
-    if (editingMessageId) {
-      try {
-        // Update in local state first
+    // Don't send empty messages
+    if (!input.trim()) return;
+
+    try {
+      const textToSend = input.trim();
+      setInput("");
+
+      if (editingMessageId) {
+        // Handle message editing
         const updatedMessages = messages.map(msg => {
-          if ((msg.id || msg._id) === editingMessageId) {
-            return {
-              ...msg,
-              text: textToSend,
-              content: textToSend, // Handle different message formats
-              message: textToSend, // Handle different message formats
-              edited: true
-            };
+          if ((msg.id || msg.tempId) === editingMessageId) {
+            return { ...msg, text: textToSend, edited: true };
           }
           return msg;
         });
-        
         setMessages(updatedMessages);
-        
-        // Reset edit state
         setEditingMessageId(null);
         setEditMessageText("");
-        setInput("");
         
-        // Here you would call your API to update the message on the server
-        // Example: await updateMessage(editingMessageId, textToSend);
-        
-        // Scroll to bottom after editing
-        setTimeout(scrollToBottom, 100);
-        
-        return; // Exit the function early
-      } catch (error) {
-        console.error("Error updating message:", error);
+        // TODO: Update message on server
+        // const response = await updateMessage(editingMessageId, textToSend);
+        return;
       }
-    }
-    
-    // Regular send message logic
-    try {
-      // Generate a temporary ID to track this message
-      const tempId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-       
-      // Create message object that will be consistent for both API and socket
-      const messageData = {
-        id: tempId,
-          senderId: userId,
-          receiverId: friendId,
+
+      // Create a temporary message ID to track this message
+      const tempId = `temp-${Date.now()}`;
+      
+      // Add message to UI immediately with 'sending' status
+      const tempMessage = {
+        id: null,
+        tempId,
+        senderId: userId,
+        receiverId: friendId,
         text: textToSend,
         timestamp: new Date().toISOString(),
-        _locally_added: true // Mark as locally added
-        };
-
-      // Add to tracking set to prevent duplicate from socket
-      sentMessagesRef.current.add(textToSend);
-
-      // Update UI immediately for better user experience
-      setMessages(prevMessages => [...prevMessages, messageData]);
-
-      // Reset input field immediately for better UX
-        setInput("");
-       
-      // First save message to database
+        status: "sending"
+      };
+      
+      setMessages(prev => [...prev, tempMessage]);
+      scrollToBottom();
+      
+      // Add to tracking set
+      sentMessagesRef.current.add(tempId);
+      
+      // Send to server
       const response = await sendMessages(friendSlug, textToSend);
-      console.log("📤 Message sent response:", response?.data);
-       
-      // Get the proper timestamp from the response
-      let messageTimestamp = new Date().toISOString();
-      let messageId = tempId;
-       
-      // Extract proper data from response
-      if (response?.data) {
-        if (response.data.id) messageId = response.data.id;
-        else if (response.data.data?.id) messageId = response.data.data.id;
-         
-        if (response.data.createdAt) messageTimestamp = response.data.createdAt;
-        else if (response.data.data?.createdAt) messageTimestamp = response.data.data.createdAt;
-        else if (response.data.timestamp) messageTimestamp = response.data.timestamp;
-        else if (response.data.data?.timestamp) messageTimestamp = response.data.data.timestamp;
-      }
-       
-      console.log("📤 Using ID and timestamp for message:", messageId, messageTimestamp);
-       
-      // Update the message with the proper ID and timestamp from the server
-      setMessages(prevMessages => 
-        prevMessages.map(msg => 
-          msg.id === tempId 
-            ? { 
-                ...msg, 
-                id: messageId, 
-                timestamp: messageTimestamp,
-                _locally_added: false
-              } 
-            : msg
-        )
-      );
-       
-      // Send to direct rooms to ensure delivery
-      if (socket.current) {
-        // Send to multiple possible room formats to ensure delivery
-        const possibleRooms = [
-          `room-${userId}-${friendId}`,
-          `room-${friendId}-${userId}`,
-          `${friendId}` // Direct to user
-        ];
-         
-        for (const room of possibleRooms) {
-          console.log(`📤 Emitting message to room: ${room}`);
-           
-          // Send to the room with all possible formats
-          socket.current.emit("sendMessage", {
-            id: messageId,
-            senderId: userId,
-            receiverId: friendId,
-            message: textToSend, // 'message' format
-            content: textToSend, // 'content' format
-            text: textToSend,    // 'text' format
-            timestamp: messageTimestamp,
-            room: room
-          });
-        }
-         
-        console.log("📤 Message emitted to all possible rooms");
-      }
-       
-      // Clean up sent message tracking after 10 seconds
-      setTimeout(() => {
-        sentMessagesRef.current.delete(textToSend);
-      }, 10000);
-       
-      // After sending message, scroll to bottom
-      setTimeout(scrollToBottom, 100);
+      console.log("Message sent, response:", response);
 
-      // Close emoji picker if open
-      if (showEmojiPicker) {
-        setShowEmojiPicker(false);
+      // Update message with server ID and 'sent' status
+      if (response?.data?.id) {
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.tempId === tempId 
+              ? { ...msg, id: response.data.id, status: "sent" } 
+              : msg
+          )
+        );
       }
 
-      } catch (error) {
-        console.error("Error sending message:", error);
-       
-      // If API fails, mark message as failed but keep it in the UI
-      setMessages(prevMessages => 
-        prevMessages.map(msg => 
-          msg._locally_added 
-            ? { ...msg, _failed: true } 
+      // Scroll to bottom
+      scrollToBottom();
+
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      // Update message status to 'failed'
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.status === "sending" 
+            ? { ...msg, status: "failed" } 
             : msg
         )
       );
@@ -1340,9 +1360,6 @@ const ChatWindow = ({ friendSlug }) => {
     }
   };
 
-  // Add this state for message options
-  const [activeMessageId, setActiveMessageId] = useState(null);
-
   return (
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
       {loading ? (
@@ -1377,6 +1394,11 @@ const ChatWindow = ({ friendSlug }) => {
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="encryption-indicator">
+            <FaShieldAlt className="encryption-icon" />
+            <span>End-to-end encrypted</span>
           </div>
 
           {/* Friend Profile Modal */}
@@ -1614,6 +1636,15 @@ const ChatWindow = ({ friendSlug }) => {
                             </div>
                             <div className="message-timestamp">
                               {formatTime(msg.timestamp)}
+                              {isSentByMe && (
+                                <span className="message-status ms-1">
+                                  {msg.status === "sending" && <span title="Sending">⌛</span>}
+                                  {msg.status === "sent" && <span title="Sent">✓</span>}
+                                  {msg.status === "delivered" && <span title="Delivered">✓✓</span>}
+                                  {msg.status === "read" && <span title="Read" className="text-primary">✓✓</span>}
+                                  {msg.status === "failed" && <span title="Failed to send" className="text-danger">!</span>}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
