@@ -1127,8 +1127,8 @@ const ChatWindow = ({ friendSlug }) => {
       const tempMessage = {
         id: null,
         tempId,
-        senderId: userId,
-        receiverId: friendId,
+          senderId: userId,
+          receiverId: friendId,
         text: textToSend,
         timestamp: new Date().toISOString(),
         status: "sending"
@@ -1158,7 +1158,7 @@ const ChatWindow = ({ friendSlug }) => {
       // Scroll to bottom
       scrollToBottom();
 
-    } catch (error) {
+      } catch (error) {
       console.error("Failed to send message:", error);
       // Update message status to 'failed'
       setMessages(prev => 
