@@ -7,6 +7,8 @@ import { getUser } from "../utils/authHelper";
 import { getChats, sendMessages } from "../services/chatService"; // ✅ Import chat API functions
 import "../styles/ChatWindow.css"; // Import the CSS file
 import * as callHelper from "../utils/callHelper"; // Import call helper utilities
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 
 const ChatWindow = ({ friendSlug }) => {
   const [messages, setMessages] = useState([]);
@@ -45,6 +47,23 @@ const ChatWindow = ({ friendSlug }) => {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editMessageText, setEditMessageText] = useState("");
   const [activeMessageId, setActiveMessageId] = useState(null);
+
+  // Add emoji handler function 
+  const handleEmojiSelect = (emoji) => {
+    const input = document.querySelector('.chat-footer input');
+    const cursorPosition = input.selectionStart;
+    
+    // Insert emoji at cursor position
+    const newMessage = input.value.substring(0, cursorPosition) + emoji.native + input.value.substring(cursorPosition);
+    setInput(newMessage);
+    
+    // Focus input and set cursor position after emoji
+    setTimeout(() => {
+      input.focus();
+      input.selectionStart = cursorPosition + emoji.native.length;
+      input.selectionEnd = cursorPosition + emoji.native.length;
+    }, 10);
+  };
 
   // Mark messages as read function
   const markMessagesAsRead = useCallback(() => {
@@ -106,7 +125,7 @@ const ChatWindow = ({ friendSlug }) => {
   useEffect(() => {
     const fetchChatHistory = async () => {
       try {
-        console.log("⭐️ Starting fetchChatHistory for friend:", friendSlug);
+        console.log("Starting fetchChatHistory for friend:", friendSlug);
         const response = await getChats(friendSlug);
 
         if (response?.data && Array.isArray(response.data)) {
@@ -137,7 +156,7 @@ const ChatWindow = ({ friendSlug }) => {
         }
 
       } catch (error) {
-        console.error("⭐️ Error fetching chat history:", error);
+        console.error(" Error fetching chat history:", error);
       }
     };
 
@@ -181,7 +200,8 @@ const ChatWindow = ({ friendSlug }) => {
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target) && 
+          !event.target.classList.contains('emoji-btn')) {
         setShowEmojiPicker(false);
       }
     }
@@ -880,7 +900,7 @@ const ChatWindow = ({ friendSlug }) => {
       const cleaned = JSON.stringify(cleanedMessages);
       const original = JSON.stringify(messages);
       if (cleaned !== original) {
-        console.log("⭐️ Cleaned up messages format for consistency:", cleanedMessages);
+        console.log(" Cleaned up messages format for consistency:", cleanedMessages);
         setMessages(cleanedMessages);
       }
     }
@@ -1301,7 +1321,7 @@ const ChatWindow = ({ friendSlug }) => {
   }, [userId]);
 
   // Add debugging right before rendering to see what messages are being mapped
-  console.log("⭐️ RENDERING COMPONENT, messages state:", messages);
+  console.log(" RENDERING COMPONENT, messages state:", messages);
 
   // Add this function to handle profile click
   const toggleFriendProfile = () => {
@@ -1638,7 +1658,7 @@ const ChatWindow = ({ friendSlug }) => {
                               {formatTime(msg.timestamp)}
                               {isSentByMe && (
                                 <span className="message-status ms-1">
-                                  {msg.status === "sending" && <span title="Sending">⌛</span>}
+                                  {msg.status === "sending" && <span title="Sending">...</span>}
                                   {msg.status === "sent" && <span title="Sent">✓</span>}
                                   {msg.status === "delivered" && <span title="Delivered">✓✓</span>}
                                   {msg.status === "read" && <span title="Read" className="text-primary">✓✓</span>}
@@ -1673,16 +1693,17 @@ const ChatWindow = ({ friendSlug }) => {
                   }}>×</button>
                 </div>
               )}
+              
+              {/* Emoji button */}
               <button 
                 className="emoji-btn" 
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 title="Add emoji"
                 aria-label="Add emoji"
-                data-bs-toggle="tooltip"
-                data-bs-placement="top"
               >
                 <FaSmile />
               </button>
+              
               <input
                 type="text"
                 placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
@@ -1691,6 +1712,19 @@ const ChatWindow = ({ friendSlug }) => {
                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                 className={`form-control ms-2 ${editingMessageId ? 'editing' : ''}`}
               />
+              
+              {/* Emoji Picker */}
+              {showEmojiPicker && (
+                <div className="emoji-picker-container" ref={emojiPickerRef}>
+                  <Picker 
+                    data={data} 
+                    onEmojiSelect={handleEmojiSelect}
+                    theme="light"
+                    previewPosition="none"
+                    skinTonePosition="none"
+                  />
+                </div>
+              )}
             </div>
             <button className="btn btn-primary ms-2" onClick={sendMessage}>
               <FaPaperPlane />
