@@ -1295,7 +1295,7 @@ const ChatWindow = ({ friendSlug }) => {
   const cancelEdit = () => {
     setEditingMessageId(null);
     setEditMessageText("");
-    setInput("");
+        setInput("");
   };
 
   // Check if message contains only emojis
@@ -1540,7 +1540,7 @@ const ChatWindow = ({ friendSlug }) => {
         }
       }));
 
-    } catch (error) {
+      } catch (error) {
       console.error("Error fetching link preview:", error);
       // Store a minimal preview
       setLinkPreviews(prev => ({
@@ -1925,19 +1925,8 @@ const ChatWindow = ({ friendSlug }) => {
 
           {/* Chat Input + Send Button */}
           <div className="chat-footer d-flex p-2 border-top">
-            <div className="position-relative d-flex flex-grow-1">
-              {editingMessageId && (
-                <div className="edit-indicator">
-                  <span>Editing message</span>
-                  <button className="cancel-edit-btn" onClick={() => {
-                    setEditingMessageId(null);
-                    setEditMessageText("");
-                    setInput("");
-                  }}>×</button>
-                </div>
-              )}
-              
-              {/* Emoji button */}
+            {/* Emoji button with container */}
+            <div className="position-relative">
               <button 
                 className="emoji-btn" 
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -1946,16 +1935,6 @@ const ChatWindow = ({ friendSlug }) => {
               >
                 <FaSmile />
               </button>
-              
-              <input
-                type="text"
-                placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-                onPaste={handlePaste}
-                className={`form-control ms-2 ${editingMessageId ? 'editing' : ''}`}
-              />
               
               {/* Emoji Picker */}
               {showEmojiPicker && (
@@ -1969,6 +1948,29 @@ const ChatWindow = ({ friendSlug }) => {
                   />
                 </div>
               )}
+            </div>
+            
+            <div className="position-relative d-flex flex-grow-1">
+              {editingMessageId && (
+                <div className="edit-indicator">
+                  <span>Editing message</span>
+                  <button className="cancel-edit-btn" onClick={() => {
+                    setEditingMessageId(null);
+                    setEditMessageText("");
+                    setInput("");
+                  }}>×</button>
+                </div>
+              )}
+              
+              <input
+                type="text"
+                placeholder={editingMessageId ? "Edit message..." : "Type a message..."}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                onPaste={handlePaste}
+                className={`form-control ${editingMessageId ? 'editing' : ''}`}
+              />
               
               {/* Input URL Previews */}
               {inputUrls.length > 0 && (

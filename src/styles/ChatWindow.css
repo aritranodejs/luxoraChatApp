@@ -84,22 +84,22 @@
 
 /* Emoji picker styles */
 .emoji-btn {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
+  position: relative;
+  left: 0;
   background: none;
   border: none;
   color: #6c757d;
-  padding: 6px;
+  padding: 8px;
   cursor: pointer;
-  z-index: 1;
+  z-index: 5;
   transition: all 0.2s ease;
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-right: 5px;
 }
 
 .emoji-btn:hover {
@@ -108,9 +108,10 @@
   transform: scale(1.1);
 }
 
+/* Emoji picker container positioned relative to the emoji button */
 .emoji-picker-container {
   position: absolute;
-  bottom: 100%;
+  top: -360px; /* Position above the emoji button */
   left: 0;
   background-color: white;
   border: 1px solid #dee2e6;
@@ -146,6 +147,7 @@
 @media (max-width: 576px) {
   .emoji-picker-container {
     position: fixed;
+    top: auto;
     bottom: 60px;
     left: 0;
     right: 0;
@@ -350,16 +352,23 @@ body.dark-mode .emoji-picker-container::-webkit-scrollbar-thumb:hover {
 
 /* Ensure emoji font is loaded for the input field */
 .chat-footer input {
-  border-radius: 20px;
-  padding: 0.5rem 1rem;
-  border: 1px solid #dee2e6;
-  background-color: white;
-  font-size: 0.9rem;
+  flex: 1;
+  border-radius: 24px;
+  padding: 12px 15px;
+  border: 1px solid #2d2d2d;
+  background-color: #2d2d2d;
+  color: #fff;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  height: 46px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) inset;
 }
 
 .chat-footer input:focus {
-  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
-  border-color: #86b7fe;
+  outline: none;
+  background-color: #a89f9f;
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
 }
 
 /* Send button improvements */
@@ -730,7 +739,7 @@ body.dark-mode .message-timestamp {
 
 /* Footer styling */
 .chat-footer {
-  padding: 15px 20px;
+  padding: 10px 15px;
   background-color: #1e1e1e;
   border-top: 1px solid #2d2d2d;
   position: sticky;
@@ -747,7 +756,7 @@ body.dark-mode .message-timestamp {
 .chat-footer input {
   flex: 1;
   border-radius: 24px;
-  padding: 12px 45px 12px 45px;
+  padding: 12px 15px;
   border: 1px solid #2d2d2d;
   background-color: #2d2d2d;
   color: #fff;
@@ -766,16 +775,14 @@ body.dark-mode .message-timestamp {
 
 /* Emoji button */
 .emoji-btn {
-  position: absolute;
-  left: 25px;
-  bottom: 50%;
-  transform: translateY(50%);
+  position: relative;
+  left: 0;
   background: none;
   border: none;
   color: #6c757d;
   padding: 8px;
   cursor: pointer;
-  z-index: 1;
+  z-index: 5;
   transition: all 0.2s ease;
   border-radius: 50%;
   width: 36px;
@@ -783,12 +790,13 @@ body.dark-mode .message-timestamp {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-right: 5px;
 }
 
 .emoji-btn:hover {
   color: #0d6efd;
   background-color: rgba(13, 110, 253, 0.1);
-  transform: translateY(50%) scale(1.1);
+  transform: scale(1.1);
 }
 
 /* Send button */
