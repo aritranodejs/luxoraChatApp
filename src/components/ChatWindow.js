@@ -266,47 +266,84 @@ const ChatWindow = ({ friendSlug }) => {
     // Play notification sound regardless of window focus
     playNotificationSound('message');
     
-    console.log("Showing notification, permission:", Notification.permission, "window focused:", windowFocused);
+    console.log("Showing message notification:", {
+      senderName, 
+      messageLength: messageContent?.length,
+      permission: Notification.permission, 
+      windowFocused
+    });
     
-    // Always try to show a notification if we have permission, even if window is focused for debugging
+    // Only show visual notification if window is not focused
+    if (windowFocused) {
+      console.log("Window is focused, skipping visual notification");
+      return;
+    }
+    
+    // Don't show visual notification if we don't have permission
     if (Notification.permission !== 'granted') {
-      console.log("No notification permission");
+      console.log("No notification permission granted");
       return;
     }
     
     try {
-      // Create a visible notification with proper icons
-      const notification = new Notification(`New message from ${senderName}`, {
+      // Make notification unique and eye-catching
+      const notification = new Notification(`New Message from ${senderName}`, {
         body: messageContent.length > 60 ? messageContent.substring(0, 57) + '...' : messageContent,
-        icon: 'https://via.placeholder.com/192x192.png?text=LX', // Placeholder icon - replace with your actual icon
-        badge: 'https://via.placeholder.com/96x96.png?text=LX', // Placeholder badge - replace with your actual badge
+        icon: 'https://via.placeholder.com/192x192.png?text=LUXORA', // Large eye-catching icon
+        badge: 'https://via.placeholder.com/96x96.png?text=L',
         vibrate: [200, 100, 200], // Vibration pattern for mobile
         requireInteraction: true, // Keep notification until user interacts with it
-        tag: 'new-message', // Use a tag to update existing notifications
+        tag: `msg-${Date.now()}`, // Unique tag to prevent overwriting
+        renotify: true, // Show even if a notification with the same tag exists
       });
-
+      
       console.log("Notification created:", notification);
       
       notification.onclick = () => {
+        // Focus the window when the notification is clicked
         window.focus();
         notification.close();
-        console.log("Notification clicked");
+        console.log("Notification clicked, window focused");
       };
       
-      notification.onshow = () => {
-        console.log("Notification shown to user");
-      };
+      // Keep notification visible for a good amount of time
+      setTimeout(() => {
+        try {
+          notification.close();
+        } catch (e) {
+          console.log("Error closing notification:", e);
+        }
+      }, 8000);
       
-      notification.onerror = (error) => {
-        console.error("Notification error:", error);
-      };
-      
-      // Auto close after 5 seconds
-      setTimeout(() => notification.close(), 5000);
+      // Create a second notification slightly delayed for mobile devices (more likely to show)
+      if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        console.log("Mobile device detected, sending second notification");
+        setTimeout(() => {
+          try {
+            const mobileNotification = new Notification(`💬 ${senderName}`, {
+              body: messageContent.substring(0, 50),
+              requireInteraction: true,
+              tag: `mobile-${Date.now()}` // Different tag to show both
+            });
+            setTimeout(() => mobileNotification.close(), 10000);
+          } catch (e) {
+            console.log("Mobile notification failed:", e);
+          }
+        }, 500);
+      }
     } catch (error) {
-      console.error('Error showing notification:', error);
+      console.error("Error showing notification:", error);
+      // Try simpler notification
+      try {
+        const simpleNotification = new Notification(senderName, {
+          body: messageContent.substring(0, 30)
+        });
+        console.log("Fallback notification created:", simpleNotification);
+      } catch (e) {
+        console.error("Even simple notification failed:", e);
+      }
     }
-  }, [playNotificationSound]);
+  }, [playNotificationSound, windowFocused]);
 
   // Request notification permission
   const requestNotificationPermission = useCallback(async () => {
@@ -865,9 +902,36 @@ const ChatWindow = ({ friendSlug }) => {
           // Play notification sound for incoming messages
           playNotificationSound('message');
           
-          // Show browser notification if window not focused
-          if (showNotifications) {
+          // Show browser notification if notifications are enabled
+          // Send directly to notification function rather than checking window focus here
+          if (showNotifications && Notification.permission === 'granted') {
+            // Log that we're attempting to show a notification
+            console.log("Attempting to show notification for incoming message");
+            
+            // Show notification using our function that handles all edge cases
             showMessageNotification(friendName, messageContent);
+            
+            // If user isn't focused on this window, also try a direct notification
+            // (this is a backup in case our function fails for some reason)
+            if (!windowFocused) {
+              try {
+                const directNotification = new Notification(`Message from ${friendName}`, {
+                  body: messageContent.length > 60 ? messageContent.substring(0, 57) + '...' : messageContent,
+                  icon: 'https://via.placeholder.com/192x192.png?text=LUXORA',
+                  tag: `direct-${Date.now()}`,
+                  requireInteraction: true
+                });
+                console.log("Direct notification created as backup:", directNotification);
+              } catch(e) {
+                console.error("Direct notification failed:", e);
+              }
+            }
+          } else {
+            console.log("Not showing notification:", { 
+              showNotifications, 
+              permission: Notification.permission,
+              focused: windowFocused
+            });
           }
         }
         
@@ -1605,33 +1669,35 @@ const ChatWindow = ({ friendSlug }) => {
           // Show browser notification if we have permission
           if (Notification.permission === 'granted') {
             try {
-              const notification = new Notification(`Message sent to offline user`, {
+              // Create a notification that's hard to miss
+              const notification = new Notification(`Message to Offline User`, {
                 body: `${friendName} will receive your message when they come online`,
-                icon: 'https://via.placeholder.com/192x192.png?text=LX',
-                badge: 'https://via.placeholder.com/96x96.png?text=LX',
-                vibrate: [200, 100, 200],
-                requireInteraction: true,
-                tag: 'offline-message'
+                icon: 'https://via.placeholder.com/192x192.png?text=LUXORA',
+                requireInteraction: true, // Keep until user interacts
+                tag: 'offline-msg-' + Date.now(), // Unique tag to ensure it shows
+                vibrate: [200, 100, 200] // Vibration for mobile
               });
               
-              // Log notification creation
-              console.log("Offline notification created");
+              // Log for debugging
+              console.log("Offline notification created", notification);
               
-              notification.onshow = () => {
-                console.log("Offline notification shown to user");
+              // Handle notification clicks
+              notification.onclick = () => {
+                window.focus();
+                notification.close();
               };
               
-              notification.onerror = (error) => {
-                console.error("Offline notification error:", error);
-              };
-              
-              // Auto close after 5 seconds
-              setTimeout(() => notification.close(), 5000);
+              // Keep it visible longer
+              setTimeout(() => notification.close(), 6000);
             } catch (error) {
               console.error('Error showing offline notification:', error);
+              // Fallback to simpler notification
+              try {
+                new Notification(`Message sent while ${friendName} is offline`);
+              } catch(e) {}
             }
           } else {
-            console.log("Couldn't show offline notification. Permission:", Notification.permission);
+            console.log("Can't show offline notification, no permission", Notification.permission);
           }
         }
       }
@@ -2038,13 +2104,32 @@ const ChatWindow = ({ friendSlug }) => {
                 </button>
               )}
               
-              {notificationStatus !== 'granted' && (
+              {Notification.permission !== 'granted' && (
                 <button 
-                  className="header-btn notification-init" 
-                  title="Enable notifications"
-                  onClick={requestNotificationPermission}
+                  className="header-btn" 
+                  title="Enable desktop notifications"
+                  onClick={() => {
+                    // Force a permission request with user interaction
+                    Notification.requestPermission().then(permission => {
+                      console.log("Notification permission:", permission);
+                      setNotificationPermission(permission);
+                      
+                      // Show a test notification if permission granted
+                      if (permission === 'granted') {
+                        try {
+                          const notification = new Notification("Notifications enabled", {
+                            body: "You will now receive notifications for new messages",
+                            icon: 'https://via.placeholder.com/192x192.png?text=LUXORA'
+                          });
+                          setTimeout(() => notification.close(), 3000);
+                        } catch(e) {
+                          console.error("Test notification failed:", e);
+                        }
+                      }
+                    });
+                  }}
                 >
-                  {notificationStatus === 'denied' ? '🔕' : '🔔'}
+                  🔔
                 </button>
               )}
               
