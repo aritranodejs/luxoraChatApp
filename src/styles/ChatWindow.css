@@ -682,6 +682,35 @@ body.dark-mode .message-timestamp {
   background-color: #c82333;
 }
 
+/* Sound notification button */
+.header-btn.audio-init {
+  background-color: #ff9800;
+  color: white;
+  animation: pulse-animation 2s infinite;
+  position: relative;
+  font-size: 18px;
+  margin-right: 10px;
+  transition: all 0.3s ease;
+}
+
+.header-btn.audio-init:hover {
+  background-color: #f57c00;
+  transform: scale(1.1);
+}
+
+/* Pulsing animation for the sound button */
+@keyframes pulse-animation {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 152, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0);
+  }
+}
+
 /* Make messages wrapper take remaining height */
 .chat-body {
   flex: 1;

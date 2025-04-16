@@ -116,6 +116,223 @@ const ChatWindow = ({ friendSlug }) => {
   const [editMessageText, setEditMessageText] = useState("");
   const [activeMessageId, setActiveMessageId] = useState(null);
 
+  // Add these state variables at the top of the ChatWindow component
+  const [notificationPermission, setNotificationPermission] = useState('default');
+  const [windowFocused, setWindowFocused] = useState(true);
+
+  // Add state to track if audio has been initialized by user interaction
+  const [audioInitialized, setAudioInitialized] = useState(false);
+  const audioContext = useRef(null);
+  const messageSound = useRef(null);
+
+  // Create a more reliable sound player function
+  const playNotificationSound = useCallback((soundType = 'message') => {
+    console.log("Attempting to play notification sound:", soundType);
+    
+    try {
+      // Initialize audio context if not already done (requires user interaction first)
+      if (!audioContext.current && window.AudioContext) {
+        audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+        console.log("AudioContext initialized:", audioContext.current.state);
+      }
+      
+      // If we have an audio context and it's in suspended state, resume it
+      if (audioContext.current && audioContext.current.state === 'suspended') {
+        audioContext.current.resume().then(() => {
+          console.log("AudioContext resumed successfully");
+        }).catch(err => {
+          console.error("Failed to resume AudioContext:", err);
+        });
+      }
+      
+      // Simple beep using AudioContext
+      if (audioContext.current && audioContext.current.state === 'running') {
+        // Create oscillator for a simple beep
+        const oscillator = audioContext.current.createOscillator();
+        const gainNode = audioContext.current.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.current.destination);
+        
+        // Different sound types
+        if (soundType === 'message') {
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(660, audioContext.current.currentTime);
+          gainNode.gain.setValueAtTime(0.2, audioContext.current.currentTime);
+          oscillator.start(audioContext.current.currentTime);
+          oscillator.stop(audioContext.current.currentTime + 0.1);
+        } else if (soundType === 'offline') {
+          // Two-tone notification for offline messages
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(523.25, audioContext.current.currentTime); // C5
+          gainNode.gain.setValueAtTime(0.2, audioContext.current.currentTime);
+          oscillator.start(audioContext.current.currentTime);
+          oscillator.frequency.setValueAtTime(659.25, audioContext.current.currentTime + 0.1); // E5
+          oscillator.stop(audioContext.current.currentTime + 0.2);
+        }
+        
+        console.log("Sound played successfully using AudioContext");
+        return;
+      }
+      
+      // Fallback to Audio API
+      const audio = new Audio();
+      
+      if (soundType === 'message') {
+        // Short simple beep for message notifications
+        audio.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAyMjIyMjIyMjIyMjIyMjIyMjIyMjI+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+P////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAYAAAAAAAAAAbBFZ8yAAAAAAAAAAAAAAAAA/+MYxAAKQAJYGUQAAAOAEBw5JOWmM4xCWDYx/+MYxAgK0AJPGUEAAAkBmZ4wH///y45F/+MYxA0AAAAAAAA//8Uc////o//4';
+      } else if (soundType === 'offline') {
+        // Longer sound for offline message notification
+        audio.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAyMjIyMjIyMjIyMjIyMjIyMjIyMjI+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+P////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAYAAAAAAAAAAbBW58KCAAAAAAAAAAAAAAAAA/+MYxAALAQpYGcQQAAQCAMRIxMI7/pRzTpMizFpMO/+MYxAsKyAJoGcEAAAgI4ch/y45MSEJ48qIj/8co/+MYxBIKaL5EWcEAACc4zs08OB5//Ko////4';
+      }
+      
+      audio.volume = 0.3;
+      
+      // Play the sound with promise handling for modern browsers
+      const playPromise = audio.play();
+      
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log("Audio played successfully using Audio API");
+            // Store reference to initialized audio element
+            if (soundType === 'message') {
+              messageSound.current = audio;
+            }
+          })
+          .catch(error => {
+            console.error("Audio playback failed:", error);
+            // Try once more with user interaction
+            if (!audioInitialized) {
+              console.log("Audio not initialized - requires user interaction first");
+            }
+          });
+      }
+    } catch (error) {
+      console.error("Error playing notification sound:", error);
+    }
+  }, [audioInitialized]);
+
+  // Initialize audio on first user interaction
+  useEffect(() => {
+    const initializeAudio = () => {
+      if (!audioInitialized) {
+        // Try to create and resume AudioContext
+        try {
+          if (!audioContext.current && window.AudioContext) {
+            audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+            console.log("AudioContext initialized on user interaction");
+          }
+          
+          if (audioContext.current && audioContext.current.state === 'suspended') {
+            audioContext.current.resume().then(() => {
+              console.log("AudioContext resumed on user interaction");
+              setAudioInitialized(true);
+            });
+          } else {
+            setAudioInitialized(true);
+          }
+          
+          // Also try to play a silent sound to initialize Audio API
+          const audio = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAL/80LAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+          audio.volume = 0;
+          const silentPlay = audio.play();
+          if (silentPlay !== undefined) {
+            silentPlay.catch(e => console.log("Silent audio initialization failed:", e));
+          }
+        } catch (error) {
+          console.error("Audio initialization error:", error);
+        }
+      }
+    };
+
+    // Add event listeners for user interaction
+    document.addEventListener('click', initializeAudio);
+    document.addEventListener('touchstart', initializeAudio);
+    document.addEventListener('keydown', initializeAudio);
+    
+    return () => {
+      document.removeEventListener('click', initializeAudio);
+      document.removeEventListener('touchstart', initializeAudio);
+      document.removeEventListener('keydown', initializeAudio);
+    };
+  }, [audioInitialized]);
+
+  // Update the show notification function to use our new sound player
+  const showMessageNotification = useCallback((senderName, messageContent) => {
+    // Play notification sound regardless of window focus
+    playNotificationSound('message');
+    
+    if (notificationPermission !== 'granted' || windowFocused) return;
+    
+    try {
+      const notification = new Notification(`New message from ${senderName}`, {
+        body: messageContent.length > 60 ? messageContent.substring(0, 57) + '...' : messageContent,
+        icon: '/notification-icon.png', // Add your app icon path
+        badge: '/notification-badge.png', // Add your badge icon path
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+      
+      // Auto close after 5 seconds
+      setTimeout(() => notification.close(), 5000);
+    } catch (error) {
+      console.error('Error showing notification:', error);
+    }
+  }, [notificationPermission, windowFocused, playNotificationSound]);
+
+  // Request notification permission
+  const requestNotificationPermission = useCallback(async () => {
+    if (!('Notification' in window)) {
+      console.log('This browser does not support notifications');
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      setNotificationPermission('granted');
+      return;
+    }
+
+    if (Notification.permission !== 'denied') {
+      try {
+        const permission = await Notification.requestPermission();
+        setNotificationPermission(permission);
+      } catch (error) {
+        console.error('Error requesting notification permission:', error);
+      }
+    }
+  }, []);
+
+  // Track window focus
+  useEffect(() => {
+    const handleFocus = () => setWindowFocused(true);
+    const handleBlur = () => setWindowFocused(false);
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    // Initial permission check
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
+  // Add this inside the component return, somewhere near the top
+  useEffect(() => {
+    // Request notification permission when notifications are enabled
+    if (showNotifications) {
+      requestNotificationPermission();
+    }
+  }, [showNotifications, requestNotificationPermission]);
+
   // Add emoji handler function 
   const handleEmojiSelect = (emoji) => {
     const input = document.querySelector('.chat-footer input');
@@ -570,7 +787,6 @@ const ChatWindow = ({ friendSlug }) => {
       }
 
       // Skip this message if it's from us and we just sent it (to avoid duplicates)
-      // IMPORTANT: We need to be careful not to filter out legitimate messages
       if (String(senderId) === String(userId) && sentMessagesRef.current.has(messageContent)) {
         console.log("📩 Skipping locally sent message received from socket:", messageContent);
         return;
@@ -580,6 +796,17 @@ const ChatWindow = ({ friendSlug }) => {
       if ((receiverId === userId && senderId === friendId) || 
           (senderId === userId && receiverId === friendId)) {
         console.log(`📩 Message is relevant to current chat: senderId=${senderId}, receiverId=${receiverId}, userId=${userId}, friendId=${friendId}`);
+        
+        // Show notification if the message is from the friend
+        if (senderId === friendId) {
+          // Play notification sound for incoming messages
+          playNotificationSound('message');
+          
+          // Show browser notification if window not focused
+          if (showNotifications) {
+            showMessageNotification(friendName, messageContent);
+          }
+        }
         
         // Unique ID for the message
         const messageId = data.id || `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -907,6 +1134,43 @@ const ChatWindow = ({ friendSlug }) => {
       }
     });
 
+    // Listen for offline notifications when user comes back online
+    socket.current.on("offlineNotifications", (data) => {
+      // This event is triggered when a user comes back online and has missed messages
+      if (data.receiverId === userId) {
+        const missedMessages = data.messages || [];
+        
+        // Process missed messages
+        if (missedMessages.length > 0) {
+          // Play sound for missed messages
+          playNotificationSound('offline');
+
+          // Show notification that summarizes missed messages
+          if (Notification.permission === 'granted' && !windowFocused) {
+            const notificationTitle = `Missed Messages from ${missedMessages.length} conversations`;
+            const notificationOptions = {
+              body: `You have ${missedMessages.length} conversations with unread messages while you were offline`,
+              icon: '/favicon.ico',
+              tag: 'offline-messages', // Add tag to replace existing notifications
+              requireInteraction: true, // Keep notification until user interacts with it
+            };
+            
+            try {
+              const notification = new Notification(notificationTitle, notificationOptions);
+              
+              // Focus window when notification is clicked
+              notification.onclick = () => {
+                window.focus();
+                notification.close();
+              };
+            } catch (error) {
+              console.error("Error showing notification:", error);
+            }
+          }
+        }
+      }
+    });
+
     // When messages are viewed, emit that they've been read
     socket.current.emit("chatOpened", {
       userId,
@@ -933,6 +1197,7 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current.off("messageStatus");
       socket.current.off("messageDelivered");
       socket.current.off("messageRead");
+      socket.current.off("offlineNotifications");
       
       // Clear the polling interval
       clearInterval(pollInterval);
@@ -1198,7 +1463,7 @@ const ChatWindow = ({ friendSlug }) => {
     setActiveMessageId(null);
   };
 
-  // Update the sendMessage function to maintain original functionality
+  // Modify the sendMessage function to check for offline status
   const sendMessage = async () => {
     // Don't send empty messages
     if (!input.trim()) return;
@@ -1233,8 +1498,8 @@ const ChatWindow = ({ friendSlug }) => {
       const tempMessage = {
         id: null,
         tempId,
-          senderId: userId,
-          receiverId: friendId,
+        senderId: userId,
+        receiverId: friendId,
         text: textToSend,
         timestamp: new Date().toISOString(),
         status: "sending"
@@ -1247,6 +1512,49 @@ const ChatWindow = ({ friendSlug }) => {
       
       // Add to tracking set
       sentMessagesRef.current.add(tempId);
+      
+      // Check if recipient is offline and handle notification
+      if (!onlineStatus) {
+        // Notify the server that a message was sent to an offline user
+        if (socket.current) {
+          socket.current.emit("offlineMessageSent", {
+            senderId: userId,
+            senderName: getUser()?.name,
+            receiverId: friendId,
+            message: textToSend,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Also emit an event to notify the recipient when they come back online
+          socket.current.emit("offlineNotification", {
+            senderId: userId,
+            senderName: getUser()?.name || 'User',
+            receiverId: friendId,
+            message: textToSend,
+            timestamp: new Date().toISOString()
+          });
+          
+          console.log(`Sent offline notification for recipient ${friendId}`);
+          
+          // Play the offline notification sound
+          playNotificationSound('offline');
+          
+          // Show browser notification if we have permission
+          if (notificationPermission === 'granted') {
+            try {
+              const notification = new Notification(`Message sent to offline user`, {
+                body: `${friendName} will receive your message when they come online`,
+                icon: '/notification-icon.png',
+              });
+              
+              // Auto close after 3 seconds
+              setTimeout(() => notification.close(), 3000);
+            } catch (error) {
+              console.error('Error showing offline notification:', error);
+            }
+          }
+        }
+      }
       
       // Send to server
       const response = await sendMessages(friendSlug, textToSend);
@@ -1637,6 +1945,18 @@ const ChatWindow = ({ friendSlug }) => {
               </div>
             </div>
             <div className="header-actions">
+              {!audioInitialized && (
+                <button 
+                  className="header-btn audio-init" 
+                  title="Enable sound notifications"
+                  onClick={() => {
+                    playNotificationSound('message');
+                    setAudioInitialized(true);
+                  }}
+                >
+                  🔊
+                </button>
+              )}
               {!activeCall ? (
                 <>
                   <button className="header-btn" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")} title="Start audio call">
@@ -1741,6 +2061,17 @@ const ChatWindow = ({ friendSlug }) => {
                           <label htmlFor="notification-toggle"></label>
                         </div>
                       </div>
+                      {showNotifications && notificationPermission !== 'granted' && (
+                        <div className="notification-permission mt-2">
+                          <p className="text-warning small mb-2">Browser notifications not enabled.</p>
+                          <button
+                            className="btn btn-sm btn-outline-primary" 
+                            onClick={requestNotificationPermission}
+                          >
+                            Enable Browser Notifications
+                          </button>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="info-item danger-zone">
