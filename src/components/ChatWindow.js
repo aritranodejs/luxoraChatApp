@@ -124,6 +124,9 @@ const ChatWindow = ({ friendSlug }) => {
   const [audioInitialized, setAudioInitialized] = useState(false);
   const audioContext = useRef(null);
   const messageSound = useRef(null);
+  
+  // Add state to track notification permission
+  const [notificationStatus, setNotificationStatus] = useState('unknown');
 
   // Create a more reliable sound player function
   const playNotificationSound = useCallback((soundType = 'message') => {
@@ -263,18 +266,39 @@ const ChatWindow = ({ friendSlug }) => {
     // Play notification sound regardless of window focus
     playNotificationSound('message');
     
-    if (notificationPermission !== 'granted' || windowFocused) return;
+    console.log("Showing notification, permission:", Notification.permission, "window focused:", windowFocused);
+    
+    // Always try to show a notification if we have permission, even if window is focused for debugging
+    if (Notification.permission !== 'granted') {
+      console.log("No notification permission");
+      return;
+    }
     
     try {
+      // Create a visible notification with proper icons
       const notification = new Notification(`New message from ${senderName}`, {
         body: messageContent.length > 60 ? messageContent.substring(0, 57) + '...' : messageContent,
-        icon: '/notification-icon.png', // Add your app icon path
-        badge: '/notification-badge.png', // Add your badge icon path
+        icon: 'https://via.placeholder.com/192x192.png?text=LX', // Placeholder icon - replace with your actual icon
+        badge: 'https://via.placeholder.com/96x96.png?text=LX', // Placeholder badge - replace with your actual badge
+        vibrate: [200, 100, 200], // Vibration pattern for mobile
+        requireInteraction: true, // Keep notification until user interacts with it
+        tag: 'new-message', // Use a tag to update existing notifications
       });
 
+      console.log("Notification created:", notification);
+      
       notification.onclick = () => {
         window.focus();
         notification.close();
+        console.log("Notification clicked");
+      };
+      
+      notification.onshow = () => {
+        console.log("Notification shown to user");
+      };
+      
+      notification.onerror = (error) => {
+        console.error("Notification error:", error);
       };
       
       // Auto close after 5 seconds
@@ -282,27 +306,66 @@ const ChatWindow = ({ friendSlug }) => {
     } catch (error) {
       console.error('Error showing notification:', error);
     }
-  }, [notificationPermission, windowFocused, playNotificationSound]);
+  }, [playNotificationSound]);
 
   // Request notification permission
   const requestNotificationPermission = useCallback(async () => {
     if (!('Notification' in window)) {
       console.log('This browser does not support notifications');
+      setNotificationStatus('unsupported');
       return;
     }
 
     if (Notification.permission === 'granted') {
       setNotificationPermission('granted');
+      setNotificationStatus('granted');
+      console.log("Notification permission already granted");
+      
+      // Test notification to verify it works
+      try {
+        const testNotification = new Notification("Notifications enabled", {
+          body: "You will now receive message notifications",
+          icon: 'https://via.placeholder.com/192x192.png?text=LX',
+          requireInteraction: true
+        });
+        
+        setTimeout(() => testNotification.close(), 3000);
+        console.log("Test notification sent");
+      } catch(e) {
+        console.error("Error sending test notification:", e);
+      }
       return;
     }
 
     if (Notification.permission !== 'denied') {
       try {
+        console.log("Requesting notification permission...");
         const permission = await Notification.requestPermission();
+        console.log("Permission response:", permission);
         setNotificationPermission(permission);
+        setNotificationStatus(permission);
+        
+        if (permission === 'granted') {
+          // Immediately show a test notification
+          try {
+            const testNotification = new Notification("Notifications enabled", {
+              body: "You will now receive message notifications",
+              icon: 'https://via.placeholder.com/192x192.png?text=LX',
+              requireInteraction: true
+            });
+            
+            setTimeout(() => testNotification.close(), 3000);
+          } catch(e) {
+            console.error("Error sending test notification:", e);
+          }
+        }
       } catch (error) {
         console.error('Error requesting notification permission:', error);
+        setNotificationStatus('error');
       }
+    } else {
+      setNotificationStatus('denied');
+      console.log("Notification permission denied");
     }
   }, []);
 
@@ -1498,8 +1561,8 @@ const ChatWindow = ({ friendSlug }) => {
       const tempMessage = {
         id: null,
         tempId,
-        senderId: userId,
-        receiverId: friendId,
+          senderId: userId,
+          receiverId: friendId,
         text: textToSend,
         timestamp: new Date().toISOString(),
         status: "sending"
@@ -1540,18 +1603,35 @@ const ChatWindow = ({ friendSlug }) => {
           playNotificationSound('offline');
           
           // Show browser notification if we have permission
-          if (notificationPermission === 'granted') {
+          if (Notification.permission === 'granted') {
             try {
               const notification = new Notification(`Message sent to offline user`, {
                 body: `${friendName} will receive your message when they come online`,
-                icon: '/notification-icon.png',
+                icon: 'https://via.placeholder.com/192x192.png?text=LX',
+                badge: 'https://via.placeholder.com/96x96.png?text=LX',
+                vibrate: [200, 100, 200],
+                requireInteraction: true,
+                tag: 'offline-message'
               });
               
-              // Auto close after 3 seconds
-              setTimeout(() => notification.close(), 3000);
+              // Log notification creation
+              console.log("Offline notification created");
+              
+              notification.onshow = () => {
+                console.log("Offline notification shown to user");
+              };
+              
+              notification.onerror = (error) => {
+                console.error("Offline notification error:", error);
+              };
+              
+              // Auto close after 5 seconds
+              setTimeout(() => notification.close(), 5000);
             } catch (error) {
               console.error('Error showing offline notification:', error);
             }
+          } else {
+            console.log("Couldn't show offline notification. Permission:", Notification.permission);
           }
         }
       }
@@ -1957,6 +2037,17 @@ const ChatWindow = ({ friendSlug }) => {
                   🔊
                 </button>
               )}
+              
+              {notificationStatus !== 'granted' && (
+                <button 
+                  className="header-btn notification-init" 
+                  title="Enable notifications"
+                  onClick={requestNotificationPermission}
+                >
+                  {notificationStatus === 'denied' ? '🔕' : '🔔'}
+                </button>
+              )}
+              
               {!activeCall ? (
                 <>
                   <button className="header-btn" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")} title="Start audio call">
