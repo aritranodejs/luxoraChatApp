@@ -2215,3 +2215,110 @@ body:not(.dark-mode) .message-bubble pre::before {
     font-size: 11px;
   }
 }
+
+/* Mobile-specific fixes for message options menu */
+@media (max-width: 768px) {
+  /* Position fixes for message options menu */
+  .message-options-menu {
+    position: absolute;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    width: 150px;
+    z-index: 1099 !important;
+    overflow: visible;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    right: auto;
+    left: auto;
+    top: auto;
+    bottom: 60px; /* Position above input area */
+  }
+  
+  /* Different positioning for sent vs received */
+  .message-bubble.sent .message-options-menu {
+    right: 0;
+    left: auto;
+    bottom: 60px;
+  }
+  
+  .message-bubble.received .message-options-menu {
+    left: 0;
+    right: auto;
+    bottom: 60px;
+  }
+  
+  /* Make options button easier to tap */
+  .message-options .btn {
+    width: 34px;
+    height: 34px;
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Ensure menu stays on top */
+  .message-bubble {
+    z-index: auto !important;
+  }
+  
+  .message-bubble:hover {
+    z-index: auto !important;
+  }
+  
+  .message-options {
+    z-index: 1090 !important;
+  }
+  
+  /* Clearer option items */
+  .message-option-item {
+    padding: 12px 16px;
+    font-size: 15px;
+  }
+  
+  /* Fix potential clash with chat input */
+  .chat-footer {
+    z-index: 100;
+    position: relative;
+  }
+  
+  /* Fix message container to prevent overflow */
+  .message-container {
+    height: calc(100vh - 130px);
+    padding: 10px;
+    overflow-x: hidden;
+  }
+  
+  /* Improve message bubble layout */
+  .message-bubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    margin-bottom: 4px;
+  }
+  
+  /* Make timestamps more readable */
+  .message-timestamp {
+    font-size: 11px;
+    margin-bottom: 8px;
+  }
+  
+  /* Ensure message content stays contained */
+  .message-content {
+    max-width: 100%;
+    word-break: break-word;
+  }
+}
+
+/* Additional fixes for very small screens */
+@media (max-width: 380px) {
+  .message-options-menu {
+    width: 130px;
+  }
+  
+  .message-option-item {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  
+  .message-bubble {
+    max-width: 85%;
+  }
+}
