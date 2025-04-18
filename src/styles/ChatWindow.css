@@ -504,9 +504,9 @@ body.dark-mode .message-timestamp {
 
 .message-options .btn {
   padding: 2px;
-  font-size: 16px;
+  font-size: 18px;
   color: rgba(255, 255, 255, 0.9);
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.5);
   border: none;
   border-radius: 50%;
   width: 28px;
@@ -522,57 +522,58 @@ body.dark-mode .message-timestamp {
   transform: scale(1.1);
 }
 
-/* Fix message options menu positioning */
+/* Message options menu fixes */
 .message-options-menu {
   position: absolute;
-  background: linear-gradient(135deg, #0d6efd, #6610f2);
+  right: -120px;
+  top: 0;
+  background-color: white;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   width: 160px;
-  z-index: 9999;
+  z-index: 1001;
   overflow: visible;
   padding: 4px 0;
-  transform-origin: top center;
-  animation: scaleIn 0.2s ease;
 }
 
-/* Position for sent messages (right-aligned) - menu appears on the left */
+/* Position for sent messages (right-aligned) */
 .message-bubble.sent .message-options-menu {
-  right: auto;
-  left: 0;
-  top: 30px;
+  right: -120px;
+  left: auto;
+  top: 25px;
 }
 
-/* Position for received messages (left-aligned) - menu appears on the right */
+/* Position for received messages (left-aligned) */
 .message-bubble.received .message-options-menu {
   left: auto;
-  right: 0;
-  top: 30px;
+  right: -120px;
+  top: 25px;
 }
 
-/* Add arrows to indicate which message the menu belongs to */
-.message-bubble.sent .message-options-menu::before {
-  content: '';
-  position: absolute;
-  top: -8px;
-  left: 15px;
-  width: 0;
-  height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 8px solid #0d6efd; /* Match the gradient start color */
+/* Make menu items more visible */
+.message-option-item {
+  padding: 10px 16px;
+  color: #333;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
 }
 
-.message-bubble.received .message-options-menu::before {
-  content: '';
-  position: absolute;
-  top: -8px;
-  right: 15px;
-  width: 0;
-  height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 8px solid #0d6efd; /* Match the gradient start color */
+.message-option-item:hover {
+  background-color: #f5f5f5;
+}
+
+.message-option-item.delete {
+  color: #dc3545;
+}
+
+.message-option-item.delete:hover {
+  background-color: rgba(255, 77, 79, 0.15);
 }
 
 /* Mobile specific fixes - use bottom menu on mobile only */
@@ -2262,7 +2263,7 @@ body:not(.dark-mode) .message-bubble pre::before {
 /* Menu items */
 .message-option-item {
   padding: 10px 16px;
-  color: #fff;
+  color: #333;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -2274,11 +2275,11 @@ body:not(.dark-mode) .message-bubble pre::before {
 }
 
 .message-option-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #f5f5f5;
 }
 
 .message-option-item.delete {
-  color: #ffcccb;
+  color: #dc3545;
 }
 
 .message-option-item.delete:hover {
@@ -2303,6 +2304,14 @@ body:not(.dark-mode) .message-bubble pre::before {
     flex: 1 !important;
     overflow-y: auto !important;
     margin-bottom: 60px !important;
+    height: calc(100vh - 130px) !important;
+  }
+  
+  .message-container {
+    flex: 1;
+    padding-bottom: 80px !important; /* Important: space for footer */
+    margin-bottom: 0 !important;
+    height: auto !important;
   }
   
   .chat-footer {
@@ -2313,25 +2322,8 @@ body:not(.dark-mode) .message-bubble pre::before {
     background-color: #1e1e1e !important;
     border-top: 1px solid #2d2d2d !important;
     z-index: 9999 !important;
-    display: flex !important;
-    align-items: center !important;
     width: 100% !important;
-    padding: 8px 12px !important;
+    padding: 10px 15px !important;
     box-sizing: border-box !important;
-    height: 60px !important;
-  }
-  
-  .chat-footer input {
-    flex: 1 !important;
-    height: 44px !important;
-  }
-  
-  .chat-footer .btn-primary, 
-  .chat-footer .emoji-btn {
-    margin: 0 4px !important;
-    flex-shrink: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
   }
 }
