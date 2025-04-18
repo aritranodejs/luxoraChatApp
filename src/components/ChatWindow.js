@@ -2072,6 +2072,117 @@ const ChatWindow = ({ friendSlug }) => {
     }, 0);
   };
 
+  // Add these utility functions for code blocks somewhere in your component
+  const detectLanguage = (code) => {
+    // Simple language detection based on keywords and syntax
+    if (code.includes('def ') || code.includes('import ') && code.includes(':')) return 'python';
+    if (code.includes('function') || code.includes('const ') || code.includes('let ') || code.includes('var ')) return 'javascript';
+    if (code.includes('class ') && code.includes('{')) return 'java';
+    if (code.includes('<html') || code.includes('<!DOCTYPE')) return 'html';
+    if (code.includes('SELECT ') && code.includes('FROM ')) return 'sql';
+    if (code.includes('console.log(') || code.includes('=>')) return 'javascript';
+    if (code.includes('public class') || code.includes('using System;')) return 'csharp';
+    if (code.includes('<?php')) return 'php';
+    if (code.includes('@import') || code.includes('@media') || code.includes('.class {')) return 'css';
+    if (code.includes('import React') || code.includes('function Component(') || code.includes('<div>')) return 'jsx';
+    if (code.includes('interface ') || code.includes(':') || code.startsWith('import {')) return 'typescript';
+    if (code.includes('{') && code.includes('}') && (code.includes('"') || code.includes(':'))) return 'json';
+    if (code.includes('#!/bin/') || code.includes('apt-get') || code.includes('sudo ')) return 'bash';
+    
+    // Default fallback
+    return 'plaintext';
+  };
+
+  const escapeHtml = (text) => {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
+  const formatMessageWithCodeBlocks = (message) => {
+    if (!message) return '';
+    
+    // Detect code blocks with triple backticks
+    const codeBlockRegex = /```([a-zA-Z]*)\n([\s\S]*?)```/g;
+    
+    // Check if the message contains code blocks
+    if (!codeBlockRegex.test(message)) {
+      return message; // Return as-is if no code blocks found
+    }
+    
+    // Reset regex since we used test()
+    codeBlockRegex.lastIndex = 0;
+    
+    let formattedMessage = message;
+    let match;
+    const blocks = [];
+    
+    // Find all code blocks
+    while ((match = codeBlockRegex.exec(message)) !== null) {
+      const fullMatch = match[0];
+      let language = match[1].trim().toLowerCase();
+      const code = match[2];
+      
+      // If language isn't specified, detect it
+      if (!language) {
+        language = detectLanguage(code);
+      }
+      
+      // Create a placeholder to replace the code block
+      const placeholder = `__CODE_BLOCK_${blocks.length}__`;
+      blocks.push({ language, code });
+      
+      // Replace the code block with the placeholder
+      formattedMessage = formattedMessage.replace(fullMatch, placeholder);
+    }
+    
+    // Replace placeholders with actual HTML
+    blocks.forEach((block, index) => {
+      const placeholder = `__CODE_BLOCK_${index}__`;
+      const escapedCode = escapeHtml(block.code);
+      
+      const codeHtml = `<pre data-language="${block.language}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" data-code="${encodeURIComponent(block.code)}">Copy</button></pre>`;
+      
+      formattedMessage = formattedMessage.replace(placeholder, codeHtml);
+    });
+    
+    return formattedMessage;
+  };
+
+  // Inside your existing component, add an effect to initialize the copy functionality
+  useEffect(() => {
+    // Add event listener for copy buttons
+    const handleCopyCode = (event) => {
+      if (event.target.classList.contains('code-copy-btn')) {
+        const code = decodeURIComponent(event.target.dataset.code);
+        navigator.clipboard.writeText(code)
+          .then(() => {
+            event.target.textContent = 'Copied!';
+            setTimeout(() => {
+              event.target.textContent = 'Copy';
+            }, 2000);
+          })
+          .catch(err => {
+            console.error('Failed to copy code: ', err);
+            event.target.textContent = 'Error!';
+            setTimeout(() => {
+              event.target.textContent = 'Copy';
+            }, 2000);
+          });
+      }
+    };
+
+    document.addEventListener('click', handleCopyCode);
+    
+    // Clean up when component unmounts
+    return () => {
+      document.removeEventListener('click', handleCopyCode);
+    };
+  }, []);
+
   return (
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
       {loading ? (
@@ -2366,10 +2477,11 @@ const ChatWindow = ({ friendSlug }) => {
                           <div style={{maxWidth: "70%"}}>
                             <div className={`message-bubble ${isSentByMe ? "sent" : "received"}`} id={`message-${msg.id || index}`}>
                               {/* Display message text */}
-                              <div className={`message-content ${isEmojiOnlyMessage(messageContent) ? 'emoji-message' : ''}`}>
-                                {messageContent}
-                                {msg.edited && <span className="edited-indicator"> (edited)</span>}
-                              </div>
+                              <div 
+                                className={`message-content ${isEmojiOnlyMessage(messageContent) ? 'emoji-message' : ''}`}
+                                dangerouslySetInnerHTML={{ __html: formatMessageWithCodeBlocks(messageContent) }}
+                              ></div>
+                              {msg.edited && <span className="edited-indicator"> (edited)</span>}
                               
                               {/* Link Previews */}
                               {extractUrls(messageContent).map((url, urlIndex) => (
