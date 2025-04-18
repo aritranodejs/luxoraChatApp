@@ -5,6 +5,7 @@ import { globalUsers, friends, getPendingRequests, addFriend, cancelRequest } fr
 import Swal from "sweetalert2";
 import { getUser } from "../utils/authHelper";
 import io from 'socket.io-client';
+import "../styles/FriendsList.css";
 
 Modal.setAppElement("#root");
 
@@ -150,7 +151,23 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
     fetchUsersAndFriends();
   }, [fetchUsersAndFriends]);
 
-  const filteredUsers = users.filter((user) => {
+  // Separate AI users and regular users, prioritizing AI users at the top
+  const { aiUsers, regularUsers } = users.reduce((acc, user) => {
+    if (user.isAI) {
+      acc.aiUsers.push(user);
+    } else {
+      acc.regularUsers.push(user);
+    }
+    return acc;
+  }, { aiUsers: [], regularUsers: [] });
+
+  // Filter AI users if there's a search query
+  const filteredAiUsers = searchQuery.trim() === "" 
+    ? aiUsers 
+    : aiUsers.filter(user => user.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  // Filter regular users based on search criteria
+  const filteredRegularUsers = regularUsers.filter((user) => {
     const searchLower = searchQuery.toLowerCase();
     const userNameLower = user.name.toLowerCase();
     const matchesSearch = userNameLower.includes(searchLower);
@@ -163,6 +180,9 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
       ? isFriend 
       : matchesSearch && !isSenderRequest; // Exclude if you have sent a request
   });
+
+  // Always show AI users (filtered if searching), then show filtered regular users
+  const filteredUsers = [...filteredAiUsers, ...filteredRegularUsers];
 
   const openModal = (user) => {
     setSelectedUser(user);
@@ -201,43 +221,53 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
             className="list-group-item d-flex align-items-center justify-content-between"
             onClick={() => onSelectChat()}
           >
-            {user.isAI && <span className="ai-icon"></span>}
-            <div
-              className="me-2 bg-secondary text-white rounded-circle d-flex justify-content-center align-items-center"
-              style={{ width: "40px", height: "40px" }}
-            >
-              {user.name.charAt(0)}
+            <div className="d-flex align-items-center flex-grow-1">
+              <div
+                className={`me-2 ${user.isAI ? 'bg-primary' : 'bg-secondary'} text-white rounded-circle d-flex justify-content-center align-items-center`}
+                style={{ width: "40px", height: "40px" }}
+              >
+                {user.name.charAt(0)}
+              </div>
+              <div className="d-flex flex-column">
+                <div className="d-flex align-items-center">
+                  <Link
+                    to={`/chat/${user?.slug}`}
+                    className="text-decoration-none text-dark"
+                  >
+                    {user.name}
+                  </Link>
+                  {user.isAI && <span className="ai-icon ms-2">AI Assistant</span>}
+                </div>
+                {user.isFriend && (
+                  <small className={user.isOnline ? "text-success" : "text-muted"}>
+                    {user.isOnline ? "Active now" : "Offline"}
+                  </small>
+                )}
+              </div>
             </div>
-            <Link
-              to={`/chat/${user?.slug}`}
-              className="text-decoration-none flex-grow-1 text-dark"
-            >
-              {user.name}
-            </Link>
             {user.isFriend ? (
               <span className="d-flex align-items-center">
-                {user.isOnline ? (
-                  <>
-                    <span className="online-dot me-1"></span>
-                    <span className="text-success">{user.isAI ? "AI" : "Active now"}</span>
-                  </>
-                ) : (
-                  <span className="text-muted">Offline</span>
-                )}
+                {user.isOnline && <span className="online-dot me-1"></span>}
               </span>
             ) : (
               !user.isFriend && searchQuery.trim() !== "" && !user.isAI && (
                 user.hasPendingRequest ? (
                   <button
                     className="btn btn-danger btn-sm"
-                    onClick={() => handleCancelRequest(user?.friendId)} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCancelRequest(user?.friendId);
+                    }} 
                   >
                     Cancel
                   </button>
                 ) : (
                   <button
                     className="btn btn-success btn-sm"
-                    onClick={() => openModal(user)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openModal(user);
+                    }}
                   >
                     Add
                   </button>
