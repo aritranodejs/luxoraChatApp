@@ -9,6 +9,7 @@ import "../styles/ChatWindow.css"; // Import the CSS file
 import * as callHelper from "../utils/callHelper"; // Import call helper utilities
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
+import { formatLastSeen } from "../utils/formatOnlineStatus";
 
 // Add the LinkPreview component before the ChatWindow component
 const LinkPreview = ({ url, preview, isLoading }) => {
@@ -127,6 +128,9 @@ const ChatWindow = ({ friendSlug }) => {
   
   // Add state to track notification permission
   const [notificationStatus, setNotificationStatus] = useState('unknown');
+
+  // Add friendLastSeen state to track when the friend was last online
+  const [friendLastSeen, setFriendLastSeen] = useState(null);
 
   // Create a more reliable sound player function
   const playNotificationSound = useCallback((soundType = 'message') => {
@@ -1304,6 +1308,31 @@ const ChatWindow = ({ friendSlug }) => {
       friendId
     });
 
+    // Add this inside your existing useEffect where socket events are set up
+    // Find the section where socket.current is initialized and add this listener
+    socket.current.on("userStatusChanged", (data) => {
+      // Check if this status update is for the current friend we're chatting with
+      if (data.userId === friendId) {
+        console.log("Friend status changed:", data);
+        setOnlineStatus(data.isOnline);
+        
+        if (!data.isOnline) {
+          setFriendLastSeen(data.lastSeen);
+        }
+        
+        // Add a status message to the chat
+        const statusMessage = {
+          id: `status-${Date.now()}`,
+          type: 'status',
+          text: `${friendName} is ${data.isOnline ? 'online' : 'offline'}`,
+          timestamp: new Date().toISOString(),
+          isStatus: true
+        };
+        
+        setMessages(prev => [...prev, statusMessage]);
+      }
+    });
+
     return () => {
       if (directRoom) {
         socket.current.emit("leaveChat", { room: directRoom });
@@ -1325,6 +1354,7 @@ const ChatWindow = ({ friendSlug }) => {
       socket.current.off("messageDelivered");
       socket.current.off("messageRead");
       socket.current.off("offlineNotifications");
+      socket.current.off("userStatusChanged");
       
       // Clear the polling interval
       clearInterval(pollInterval);
@@ -1338,10 +1368,14 @@ const ChatWindow = ({ friendSlug }) => {
         const friendData = response?.data?.friend;
         if (friendData) {
           setFriendName(friendData.name);
-          setOnlineStatus(friendData.isOnline);
+          setFriendId(friendData.id);
+          setOnlineStatus(friendData.isOnline || false);
           setFriendPeerId(friendData.peerId);
+          setFriendLastSeen(friendData.lastSeen || null);
         }
-      } catch (error) {}
+      } catch (error) {
+        console.error("Error fetching friend data:", error);
+      }
       setLoading(false);
     };
 
@@ -2197,7 +2231,7 @@ const ChatWindow = ({ friendSlug }) => {
               <div className="friend-info">
                 <h5 className="friend-name">{friendName || "Unknown"}</h5>
                 <span className={`status-text ${onlineStatus ? 'text-success' : 'text-secondary'}`}>
-                  {onlineStatus ? "Active now" : "Offline"}
+                  {onlineStatus ? "Active now" : friendLastSeen ? formatLastSeen(friendLastSeen) : "Offline"}
                 </span>
               </div>
             </div>
@@ -2288,7 +2322,7 @@ const ChatWindow = ({ friendSlug }) => {
                     </div>
                     <h3 className="mt-3">{friendName}</h3>
                     <p className={`status ${onlineStatus ? 'online' : 'offline'}`}>
-                      {onlineStatus ? "Online" : "Offline"}
+                      {onlineStatus ? "Online" : friendLastSeen ? formatLastSeen(friendLastSeen) : "Offline"}
                     </p>
                     <div className="action-buttons">
                       <button className="action-btn message" onClick={toggleFriendProfile}>

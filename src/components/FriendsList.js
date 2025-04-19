@@ -6,6 +6,7 @@ import Swal from "sweetalert2";
 import { getUser } from "../utils/authHelper";
 import io from 'socket.io-client';
 import "../styles/FriendsList.css";
+import { formatLastSeen } from "../utils/formatOnlineStatus";
 
 Modal.setAppElement("#root");
 
@@ -189,27 +190,6 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
       }
     };
   }, [fetchUsersAndFriends]);
-
-  // Format last seen time
-  const formatLastSeen = (lastSeen) => {
-    if (!lastSeen) return "Unknown";
-    
-    const lastSeenDate = new Date(lastSeen);
-    const now = new Date();
-    const diffMs = now - lastSeenDate;
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins} min ago`;
-    
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    
-    return lastSeenDate.toLocaleDateString();
-  };
 
   // Separate AI users and regular users, prioritizing AI users at the top
   const { aiUsers, regularUsers } = users.reduce((acc, user) => {
