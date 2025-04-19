@@ -280,7 +280,7 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
                 </div>
                 {user.isFriend && (
                   <small className={user.isOnline ? "text-success" : "text-muted"}>
-                    {user.isOnline ? "Active now" : user.lastSeen ? `Last seen ${formatLastSeen(user.lastSeen)}` : "Offline"}
+                    {user.isOnline ? "Active now" : user.lastSeen ? `${formatLastSeen(user.lastSeen)}` : "Offline"}
                   </small>
                 )}
               </div>
