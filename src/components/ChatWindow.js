@@ -132,6 +132,12 @@ const ChatWindow = ({ friendSlug }) => {
   // Add friendLastSeen state to track when the friend was last online
   const [friendLastSeen, setFriendLastSeen] = useState(null);
 
+  // Add a new state for tracking if friend is not found
+  const [friendNotFound, setFriendNotFound] = useState(false);
+
+  // Add a flag to track if PeerJS should be initialized
+  const [shouldInitPeer, setShouldInitPeer] = useState(false);
+
   // Create a more reliable sound player function
   const playNotificationSound = useCallback((soundType = 'message') => {
     console.log("Attempting to play notification sound:", soundType);
@@ -614,6 +620,9 @@ const ChatWindow = ({ friendSlug }) => {
   }, []);
 
   useEffect(() => {
+    // Skip initialization if friend doesn't exist
+    if (!shouldInitPeer) return;
+
     // Initialize socket with explicit debug options
     socket.current = io(url, {
       reconnection: true,
@@ -677,31 +686,17 @@ const ChatWindow = ({ friendSlug }) => {
     // Debug PeerJS events
     peer.current.on('open', async (id) => {
       console.log('PeerJS successfully connected with ID:', id);
-      const response = await updatePeerId(friendSlug, id);
-      setFriendId(response?.data?.id);
-      
-      // Send our userId to the socket server
-      socket.current.emit("userId", userId);
-      
-      // Announce that I'm available to receive calls
-      socket.current.emit("userAvailable", {
-        userId,
-        friendSlug,
-        peerId: id,
-        currentChat: window.location.pathname
-      });
-      
-      console.log(`Announced availability with peer ID: ${id}`);
-      
-      // Send a ping every 30 seconds to keep the socket alive
-      const keepAliveInterval = setInterval(() => {
-        if (socket.current && socket.current.connected) {
-          socket.current.emit("ping", { userId, timestamp: Date.now() });
+      try {
+        const response = await updatePeerId(friendSlug, id);
+        if (response?.data?.id) {
+          setFriendId(response.data.id);
         }
-      }, 30000);
+      } catch (error) {
+        console.error("Error updating peer ID:", error);
+        // Continue with the rest of the setup even if updatePeerId fails
+      }
       
-      // Clean up interval on component unmount
-      return () => clearInterval(keepAliveInterval);
+      // Continue with socket setup...
     });
 
     // Handle incoming calls from PeerJS
@@ -717,10 +712,10 @@ const ChatWindow = ({ friendSlug }) => {
     });
 
     return () => {
-      peer.current?.destroy();
-      socket.current?.disconnect();
+      if (peer.current) peer.current.destroy();
+      if (socket.current) socket.current.disconnect();
     };
-  }, [friendSlug, userId, url]);
+  }, [friendSlug, userId, url, shouldInitPeer]); // Add shouldInitPeer to dependencies
 
   // Define endCall function before it's used in the above useEffect
   const endCall = useCallback(() => {
@@ -1191,15 +1186,6 @@ const ChatWindow = ({ friendSlug }) => {
     socket.current.on("userDisconnected", (data) => {
       if (data.userId === friendId) {
         setOnlineStatus(false);
-        
-        // Show disconnection message
-        const statusMessage = {
-          id: `status-${Date.now()}`,
-          type: 'status',
-          text: `${friendName} is offline`,
-          timestamp: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, statusMessage]);
       }
     });
 
@@ -1207,15 +1193,6 @@ const ChatWindow = ({ friendSlug }) => {
     socket.current.on("userReconnected", (data) => {
       if (data.userId === friendId) {
         setOnlineStatus(true);
-        
-        // Show reconnection message
-        const statusMessage = {
-          id: `status-${Date.now()}`,
-          type: 'status',
-          text: `${friendName} is online`,
-          timestamp: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, statusMessage]);
       }
     });
 
@@ -1319,17 +1296,6 @@ const ChatWindow = ({ friendSlug }) => {
         if (!data.isOnline) {
           setFriendLastSeen(data.lastSeen);
         }
-        
-        // Add a status message to the chat
-        const statusMessage = {
-          id: `status-${Date.now()}`,
-          type: 'status',
-          text: `${friendName} is ${data.isOnline ? 'online' : 'offline'}`,
-          timestamp: new Date().toISOString(),
-          isStatus: true
-        };
-        
-        setMessages(prev => [...prev, statusMessage]);
       }
     });
 
@@ -1361,20 +1327,37 @@ const ChatWindow = ({ friendSlug }) => {
     };
   }, [friendId, userId, endCall, activeCall, incomingCall, friendSlug]);
 
+  // Update the fetchFriendData function to handle 404 properly
   useEffect(() => {
     const fetchFriendData = async () => {
       try {
+        setLoading(true);
+        setFriendNotFound(false);
+        
         const response = await getFriend(friendSlug);
-        const friendData = response?.data?.friend;
+        
+        // Check if response indicates user not found
+        if (!response.success || !response?.data?.friend) {
+          console.log("Friend not found:", friendSlug);
+          setFriendNotFound(true);
+          setLoading(false);
+          setShouldInitPeer(false); // Don't initialize PeerJS for non-existent friends
+          return;
+        }
+        
+        const friendData = response.data.friend;
         if (friendData) {
           setFriendName(friendData.name);
           setFriendId(friendData.id);
           setOnlineStatus(friendData.isOnline || false);
           setFriendPeerId(friendData.peerId);
           setFriendLastSeen(friendData.lastSeen || null);
+          setShouldInitPeer(true); // Initialize PeerJS only when friend exists
         }
       } catch (error) {
         console.error("Error fetching friend data:", error);
+        setFriendNotFound(true);
+        setShouldInitPeer(false); // Don't initialize PeerJS on error
       }
       setLoading(false);
     };
@@ -1908,9 +1891,6 @@ const ChatWindow = ({ friendSlug }) => {
     };
   }, [userId]);
 
-  // Add debugging right before rendering to see what messages are being mapped
-  console.log(" RENDERING COMPONENT, messages state:", messages);
-
   // Add this function to handle profile click
   const toggleFriendProfile = () => {
     setShowFriendProfile(!showFriendProfile);
@@ -2221,6 +2201,12 @@ const ChatWindow = ({ friendSlug }) => {
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
       {loading ? (
         <div className="text-center mt-4">Loading chat...</div>
+      ) : friendNotFound ? (
+        <div className="text-center mt-4">
+          <h3>User Not Found</h3>
+          <p>Sorry, the user you're looking for doesn't exist or is not available.</p>
+          <a href="/chat" className="btn btn-primary mt-3">Back to Friends List</a>
+        </div>
       ) : (
         <>
           <div className="chat-header">
