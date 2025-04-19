@@ -89,21 +89,52 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
       let pendingRequests = await getPendingRequests();
       pendingRequests = pendingRequests?.data?.friends || [];
 
-      // Socket 
-      socket.current = io(url); // Initialize socket connection
-      const userId = getUser()?.id;
-      socket.current.emit('userId', userId);
+      // Initialize socket connection
+      if (!socket.current) {
+        socket.current = io(url);
+        const userId = getUser()?.id;
+        socket.current.emit('userId', userId);
 
-      // Listen for s
-      socket.current.on('friendListUpdated', (data) => {
-        globalUsersData = data?.users || [] ;
-        friendsData = data?.friends || [];
-        pendingRequests = data?.pendingFriends || [];
+        // Listen for friend list updates
+        socket.current.on('friendListUpdated', (data) => {
+          const { updatedUsers, extractedFriendsList } = getUsersAndFriends(
+            data?.users || [],
+            data?.friends || [],
+            data?.pendingFriends || []
+          );
+          setUsers(updatedUsers);
+          setFriendsList(extractedFriendsList);
+        }); 
 
-        const { updatedUsers, extractedFriendsList } = getUsersAndFriends(globalUsersData, friendsData, pendingRequests);
-        setUsers(updatedUsers);
-        setFriendsList(extractedFriendsList);
-      }); 
+        // Listen for real-time status changes
+        socket.current.on('userStatusChanged', (data) => {
+          setUsers(prevUsers => {
+            return prevUsers.map(user => {
+              if (user.id === data.userId) {
+                return {
+                  ...user,
+                  isOnline: data.isOnline,
+                  lastSeen: data.lastSeen
+                };
+              }
+              return user;
+            });
+          });
+
+          setFriendsList(prevFriends => {
+            return prevFriends.map(friend => {
+              if (friend.id === data.userId) {
+                return {
+                  ...friend,
+                  isOnline: data.isOnline,
+                  lastSeen: data.lastSeen
+                };
+              }
+              return friend;
+            });
+          });
+        });
+      }
   
       const { updatedUsers, extractedFriendsList } = getUsersAndFriends(globalUsersData, friendsData, pendingRequests);
 
@@ -113,8 +144,8 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
       console.error("Error fetching users:", error);
     }
   }, [url]); 
-  const getUsersAndFriends = (globalUsersData, friendsData, pendingRequests) => {
 
+  const getUsersAndFriends = (globalUsersData, friendsData, pendingRequests) => {
     let extractedFriendsList = friendsData.map((friend) => ({
       friendId: friend?.id,
       senderId: friend?.senderId,
@@ -149,7 +180,36 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
 
   useEffect(() => {
     fetchUsersAndFriends();
+
+    // Cleanup socket connection on unmount
+    return () => {
+      if (socket.current) {
+        socket.current.off('userStatusChanged');
+        socket.current.off('friendListUpdated');
+      }
+    };
   }, [fetchUsersAndFriends]);
+
+  // Format last seen time
+  const formatLastSeen = (lastSeen) => {
+    if (!lastSeen) return "Unknown";
+    
+    const lastSeenDate = new Date(lastSeen);
+    const now = new Date();
+    const diffMs = now - lastSeenDate;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} min ago`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    
+    return lastSeenDate.toLocaleDateString();
+  };
 
   // Separate AI users and regular users, prioritizing AI users at the top
   const { aiUsers, regularUsers } = users.reduce((acc, user) => {
@@ -240,7 +300,7 @@ const FriendsList = ({ searchQuery, onSelectChat }) => {
                 </div>
                 {user.isFriend && (
                   <small className={user.isOnline ? "text-success" : "text-muted"}>
-                    {user.isOnline ? "Active now" : "Offline"}
+                    {user.isOnline ? "Active now" : user.lastSeen ? `Last seen ${formatLastSeen(user.lastSeen)}` : "Offline"}
                   </small>
                 )}
               </div>
