@@ -142,6 +142,104 @@ const ChatWindow = ({ friendSlug }) => {
   const [friendData, setFriendData] = useState(null);
   const [isAI, setIsAI] = useState(false);
 
+  // Add state to track if friend is typing
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Add a ref for the typing timeout
+  const typingTimeout = useRef(null);
+
+  // Add a ref to track if user is typing
+  const isUserTyping = useRef(false);
+
+  // Add directRoom state or reference
+  const [directRoom, setDirectRoom] = useState(null);
+
+  // Add socket listeners for typing indicators in the initialization useEffect
+  useEffect(() => {
+    if (!socket.current) return;
+
+    // Add listeners for typing indicators
+    socket.current.on("friendTyping", (data) => {
+      if (data.senderId === friendId) {
+        setIsTyping(true);
+        
+        // Auto clear typing indicator after some time in case the stop typing event is missed
+        clearTimeout(typingTimeout.current);
+        typingTimeout.current = setTimeout(() => {
+          setIsTyping(false);
+        }, 3000);
+      }
+    });
+    
+    socket.current.on("friendStoppedTyping", (data) => {
+      if (data.senderId === friendId) {
+        setIsTyping(false);
+      }
+    });
+
+    return () => {
+      // Other cleanup code...
+      socket.current.off("friendTyping");
+      socket.current.off("friendStoppedTyping");
+      clearTimeout(typingTimeout.current);
+    };
+  }, [socket, friendId]);
+
+  // Update handleInputChange to emit typing events
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setInput(value);
+    
+    // Detect URLs in input
+    const urls = extractUrls(value);
+    if (JSON.stringify(urls) !== JSON.stringify(inputUrls)) {
+      setInputUrls(urls);
+      
+      // Fetch previews for new URLs
+      urls.forEach(url => {
+        if (!linkPreviews[url] && !loadingPreviews[url]) {
+          fetchLinkPreview(url);
+        }
+      });
+    }
+    
+    // Add typing indicator logic
+    if (socket.current) {
+      if (value.trim() !== '') {
+        // Only emit if not already typing
+        if (!isUserTyping.current) {
+          isUserTyping.current = true;
+          socket.current.emit('typing', {
+            senderId: userId,
+            receiverId: friendId,
+            room: directRoom
+          });
+        }
+        
+        // Clear the typing timeout and set a new one
+        clearTimeout(typingTimeout.current);
+        typingTimeout.current = setTimeout(() => {
+          isUserTyping.current = false;
+          socket.current.emit('stopTyping', {
+            senderId: userId,
+            receiverId: friendId,
+            room: directRoom
+          });
+        }, 2000);
+      } else {
+        // If input is empty, immediately emit stop typing
+        if (isUserTyping.current) {
+          isUserTyping.current = false;
+          socket.current.emit('stopTyping', {
+            senderId: userId,
+            receiverId: friendId,
+            room: directRoom
+          });
+        }
+      }
+    }
+  };
+
   // Create a more reliable sound player function
   const playNotificationSound = useCallback((soundType = 'message') => {
     console.log("Attempting to play notification sound:", soundType);
@@ -2060,74 +2158,22 @@ const ChatWindow = ({ friendSlug }) => {
     });
   }, [messages, linkPreviews, loadingPreviews]);
 
-  // Update handle input change to detect URLs
-  const handleInputChange = (e) => {
-    const value = e.target.value;
-    setInput(value);
+  // Initialize directRoom in the socket connection useEffect
+  useEffect(() => {
+    if (!socket.current || !userId || !friendId) return;
     
-    // Detect URLs in input
-    const urls = extractUrls(value);
-    if (JSON.stringify(urls) !== JSON.stringify(inputUrls)) {
-      setInputUrls(urls);
-      
-      // Fetch previews for new URLs
-      urls.forEach(url => {
-        if (!linkPreviews[url] && !loadingPreviews[url]) {
-          fetchLinkPreview(url);
-        }
-      });
-    }
-  };
-
-  // Special handler for paste events to immediately detect URLs
-  const handlePaste = (e) => {
-    // Let the regular onChange event handle the paste content update
-    setTimeout(() => {
-      const value = e.target.value;
-      const urls = extractUrls(value);
-      if (urls.length > 0) {
-        setInputUrls(urls);
-        
-        // Fetch previews for new URLs
-        urls.forEach(url => {
-          if (!linkPreviews[url] && !loadingPreviews[url]) {
-            fetchLinkPreview(url);
-          }
-        });
-      }
-    }, 0);
-  };
-
-  // Add these utility functions for code blocks somewhere in your component
-  const detectLanguage = (code) => {
-    // Simple language detection based on keywords and syntax
-    if (code.includes('def ') || code.includes('import ') && code.includes(':')) return 'python';
-    if (code.includes('function') || code.includes('const ') || code.includes('let ') || code.includes('var ')) return 'javascript';
-    if (code.includes('class ') && code.includes('{')) return 'java';
-    if (code.includes('<html') || code.includes('<!DOCTYPE')) return 'html';
-    if (code.includes('SELECT ') && code.includes('FROM ')) return 'sql';
-    if (code.includes('console.log(') || code.includes('=>')) return 'javascript';
-    if (code.includes('public class') || code.includes('using System;')) return 'csharp';
-    if (code.includes('<?php')) return 'php';
-    if (code.includes('@import') || code.includes('@media') || code.includes('.class {')) return 'css';
-    if (code.includes('import React') || code.includes('function Component(') || code.includes('<div>')) return 'jsx';
-    if (code.includes('interface ') || code.includes(':') || code.startsWith('import {')) return 'typescript';
-    if (code.includes('{') && code.includes('}') && (code.includes('"') || code.includes(':'))) return 'json';
-    if (code.includes('#!/bin/') || code.includes('apt-get') || code.includes('sudo ')) return 'bash';
+    // Create a room ID for direct messaging
+    const roomId = [userId, friendId].sort().join('-');
+    setDirectRoom(roomId);
     
-    // Default fallback
-    return 'plaintext';
-  };
+    // Join the room for this direct conversation
+    socket.current.emit("joinChat", { room: roomId });
+    console.log("Joined chat room:", roomId);
 
-  const escapeHtml = (text) => {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  };
+    // Other socket setup code...
+  }, [userId, friendId, socket.current]);
 
+  // Add formatMessageWithCodeBlocks function
   const formatMessageWithCodeBlocks = (message) => {
     if (!message) return '';
     
@@ -2178,36 +2224,54 @@ const ChatWindow = ({ friendSlug }) => {
     return formattedMessage;
   };
 
-  // Inside your existing component, add an effect to initialize the copy functionality
-  useEffect(() => {
-    // Add event listener for copy buttons
-    const handleCopyCode = (event) => {
-      if (event.target.classList.contains('code-copy-btn')) {
-        const code = decodeURIComponent(event.target.dataset.code);
-        navigator.clipboard.writeText(code)
-          .then(() => {
-            event.target.textContent = 'Copied!';
-            setTimeout(() => {
-              event.target.textContent = 'Copy';
-            }, 2000);
-          })
-          .catch(err => {
-            console.error('Failed to copy code: ', err);
-            event.target.textContent = 'Error!';
-            setTimeout(() => {
-              event.target.textContent = 'Copy';
-            }, 2000);
-          });
-      }
-    };
-
-    document.addEventListener('click', handleCopyCode);
+  // Add helper functions for code formatting
+  const detectLanguage = (code) => {
+    // Simple language detection based on keywords and syntax
+    if (code.includes('def ') || code.includes('import ') && code.includes(':')) return 'python';
+    if (code.includes('function') || code.includes('const ') || code.includes('let ') || code.includes('var ')) return 'javascript';
+    if (code.includes('class ') && code.includes('{')) return 'java';
+    if (code.includes('<html') || code.includes('<!DOCTYPE')) return 'html';
+    if (code.includes('SELECT ') && code.includes('FROM ')) return 'sql';
+    if (code.includes('console.log(') || code.includes('=>')) return 'javascript';
+    if (code.includes('public class') || code.includes('using System;')) return 'csharp';
+    if (code.includes('<?php')) return 'php';
+    if (code.includes('@import') || code.includes('@media') || code.includes('.class {')) return 'css';
+    if (code.includes('import React') || code.includes('function Component(') || code.includes('<div>')) return 'jsx';
+    if (code.includes('interface ') || code.includes(':') || code.startsWith('import {')) return 'typescript';
+    if (code.includes('{') && code.includes('}') && (code.includes('"') || code.includes(':'))) return 'json';
+    if (code.includes('#!/bin/') || code.includes('apt-get') || code.includes('sudo ')) return 'bash';
     
-    // Clean up when component unmounts
-    return () => {
-      document.removeEventListener('click', handleCopyCode);
-    };
-  }, []);
+    // Default fallback
+    return 'plaintext';
+  };
+
+  const escapeHtml = (text) => {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
+
+  // Add handlePaste function
+  const handlePaste = (e) => {
+    // Let the regular onChange event handle the paste content update
+    setTimeout(() => {
+      const value = e.target.value;
+      const urls = extractUrls(value);
+      if (urls.length > 0) {
+        setInputUrls(urls);
+        
+        // Fetch previews for new URLs
+        urls.forEach(url => {
+          if (!linkPreviews[url] && !loadingPreviews[url]) {
+            fetchLinkPreview(url);
+          }
+        });
+      }
+    }, 0);
+  };
 
   return (
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
@@ -2628,6 +2692,19 @@ const ChatWindow = ({ friendSlug }) => {
             ) : (
               <div className="text-center text-muted mt-4">
                 No messages yet. Start the conversation!
+              </div>
+            )}
+            
+            {/* Friend Typing Indicator */}
+            {isTyping && (
+              <div className="d-flex mb-2 justify-content-start">
+                <div style={{maxWidth: "70%"}}>
+                  <div className="typing-indicator">
+                    <span className="dot"></span>
+                    <span className="dot"></span>
+                    <span className="dot"></span>
+                  </div>
+                </div>
               </div>
             )}
           </div>

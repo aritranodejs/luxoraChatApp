@@ -420,7 +420,7 @@ const VideoCall = () => {
       socket.on('connect_error', (err) => {
         console.error(`Socket connection error: ${err.message}`);
         setError(`Socket connection error: ${err.message}. Retrying...`);
-        
+      
         // Try to reconnect socket after a delay
         setTimeout(() => {
           if (socket) {
@@ -440,7 +440,7 @@ const VideoCall = () => {
       socket.on('connect', () => {
       socket.emit("userId", userId);
         console.log("Socket connected/reconnected, sent userId:", userId);
-        
+      
         // Also re-announce call status on reconnect
         socket.emit("inCall", {
           userId,

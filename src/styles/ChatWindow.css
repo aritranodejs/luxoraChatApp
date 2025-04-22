@@ -407,12 +407,13 @@ body.dark-mode .emoji-picker-container::-webkit-scrollbar-thumb:hover {
   line-height: 1.4;
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
   z-index: 1;
   min-width: 60px;
   white-space: pre-line;
   overflow: hidden !important;
   box-sizing: border-box !important;
+  animation: messageAppear 0.3s ease-out forwards;
 }
 
 .message-bubble.sent {
@@ -421,6 +422,8 @@ body.dark-mode .emoji-picker-container::-webkit-scrollbar-thumb:hover {
   margin-left: auto;
   border-bottom-right-radius: 4px;
   max-width: 75% !important;
+  animation: messageAppear 0.3s ease-out forwards;
+  box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3);
 }
 
 .message-bubble.received {
@@ -429,6 +432,8 @@ body.dark-mode .emoji-picker-container::-webkit-scrollbar-thumb:hover {
   margin-right: auto;
   border-bottom-left-radius: 4px;
   max-width: 75% !important;
+  animation: messageAppear 0.3s ease-out forwards;
+  box-shadow: 0 2px 4px rgba(55, 71, 79, 0.3);
 }
 
 /* Message content improvements for Teams-like appearance */
@@ -1992,12 +1997,13 @@ html, body {
   line-height: 1.4;
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
   z-index: 1;
   min-width: 60px;
   white-space: pre-line;
   overflow: hidden !important;
   box-sizing: border-box !important;
+  animation: messageAppear 0.3s ease-out forwards;
 }
 
 .message-bubble.sent {
@@ -2006,6 +2012,8 @@ html, body {
   margin-left: auto;
   border-bottom-right-radius: 4px;
   max-width: 75% !important;
+  animation: messageAppear 0.3s ease-out forwards;
+  box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3);
 }
 
 .message-bubble.received {
@@ -2014,6 +2022,8 @@ html, body {
   margin-right: auto;
   border-bottom-left-radius: 4px;
   max-width: 75% !important;
+  animation: messageAppear 0.3s ease-out forwards;
+  box-shadow: 0 2px 4px rgba(55, 71, 79, 0.3);
 }
 
 /* MESSAGE WRAPPER STRICT FIXES */
@@ -2327,3 +2337,393 @@ body:not(.dark-mode) .message-bubble pre::before {
     box-sizing: border-box !important;
   }
 }
+
+/* Add smooth message appearance animation */
+@keyframes messageAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Add a special AI message animation */
+@keyframes aiMessageAppear {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    background-position: 0% 50%;
+  }
+}
+
+/* Add typing indicator animation */
+@keyframes typingAnimation {
+  0% { transform: translateY(0px); }
+  28% { transform: translateY(-5px); }
+  44% { transform: translateY(0px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Add subtle hover effect to messages */
+@keyframes pulseHighlight {
+  0% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
+  50% { box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); }
+  100% { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
+}
+
+/* Add gradient animation for AI message highlight */
+@keyframes gradientBorder {
+  0% { border-color: #8e24aa; }
+  25% { border-color: #3949ab; }
+  50% { border-color: #00acc1; }
+  75% { border-color: #7cb342; }
+  100% { border-color: #8e24aa; }
+}
+
+/* Style for outgoing messages */
+.message-bubble.sent {
+  background-color: #0d6efd;
+  color: white;
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+  max-width: 75% !important;
+  animation: messageAppear 0.3s ease-out forwards;
+  box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3);
+}
+
+/* Style for received messages from AI with special gradient */
+.message-bubble.received {
+  background-color: #37474f;
+  color: #fff;
+  margin-right: auto;
+  border-bottom-left-radius: 4px;
+  max-width: 75% !important;
+  animation: messageAppear 0.3s ease-out forwards;
+  box-shadow: 0 2px 4px rgba(55, 71, 79, 0.3);
+}
+
+/* Special styling for AI messages */
+.message-bubble.received.ai-message {
+  background-color: #383554;
+  border-left: 3px solid #8e24aa;
+  animation: aiMessageAppear 0.5s ease-out forwards;
+  box-shadow: 0 2px 6px rgba(142, 36, 170, 0.2);
+}
+
+.message-bubble.received.ai-message:hover {
+  border-left: 3px solid;
+  animation: gradientBorder 3s infinite, pulseHighlight 2s infinite;
+}
+
+/* Add glass effect to messages for premium look */
+.message-bubble.sent {
+  background-image: linear-gradient(135deg, #1a6dff 0%, #0a58ca 100%);
+  backdrop-filter: blur(10px);
+}
+
+.message-bubble.received {
+  background-image: linear-gradient(135deg, #455a64 0%, #37474f 100%);
+  backdrop-filter: blur(10px);
+}
+
+.message-bubble.received.ai-message {
+  background-image: linear-gradient(135deg, #4a3b73 0%, #383554 100%);
+  backdrop-filter: blur(10px);
+}
+
+/* Add a typing indicator for AI */
+.typing-indicator {
+  background-color: #383554;
+  border-bottom-left-radius: 4px;
+  border-radius: 18px;
+  padding: 12px 15px;
+  display: inline-block;
+  margin-right: auto;
+  position: relative;
+  animation: fadeIn 0.5s ease-out;
+  box-shadow: 0 2px 4px rgba(55, 71, 79, 0.3);
+  max-width: 60px;
+  min-width: 60px;
+}
+
+.typing-indicator .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  margin-right: 5px;
+  opacity: 0.8;
+  animation: typingAnimation 1.4s infinite;
+}
+
+.typing-indicator .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator .dot:nth-child(3) {
+  animation-delay: 0.4s;
+  margin-right: 0;
+}
+
+@keyframes typingAnimation {
+  0% { transform: translateY(0px); }
+  28% { transform: translateY(-5px); }
+  44% { transform: translateY(0px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Add a subtle ripple effect around the typing bubble */
+.typing-indicator::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 20px;
+  background: transparent;
+  animation: typingRipple 1.5s infinite;
+  opacity: 0;
+}
+
+@keyframes typingRipple {
+  0% {
+    transform: scale(1);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* Make AI avatar glow when active */
+.avatar-circle.ai-avatar {
+  position: relative;
+  overflow: visible;
+}
+
+.avatar-circle.ai-avatar::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid #8e24aa;
+  animation: pulseGlow 2s infinite;
+  z-index: -1;
+}
+
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 5px rgba(142, 36, 170, 0.4);
+    opacity: 0.6;
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(142, 36, 170, 0.6);
+    opacity: 1;
+  }
+  100% {
+    box-shadow: 0 0 5px rgba(142, 36, 170, 0.4);
+    opacity: 0.6;
+  }
+}
+
+/* Enhance chat header for premium look */
+.chat-header {
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #1e1e2f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.chat-header:hover {
+  background-color: #252540;
+}
+
+/* Enhance friend info section */
+.friend-info {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.friend-info:hover {
+  transform: translateY(-2px);
+}
+
+/* Smooth transition for friend profile modal */
+.friend-profile-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: flex-end;
+  backdrop-filter: blur(5px);
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Add smooth typing animation for input field */
+.chat-footer input:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+  animation: inputPulse 2s infinite;
+}
+
+@keyframes inputPulse {
+  0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(13, 110, 253, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); }
+}
+
+/* Add premium glass effect to the entire chat container */
+.chat-container {
+  background-image: linear-gradient(135deg, #121212 0%, #1e1e2f 100%);
+  backdrop-filter: blur(15px);
+}
+
+/* Improved scrollbar for premium feel */
+.message-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.message-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+.message-container::-webkit-scrollbar-thumb {
+  background: rgba(13, 110, 253, 0.5);
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+.message-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(13, 110, 253, 0.8);
+}
+
+/* Enhance AI capabilities list with animations */
+.ai-capabilities-list {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.ai-capabilities-list li {
+  position: relative;
+  padding-left: 25px;
+  margin-bottom: 10px;
+  animation: fadeIn 0.5s ease-out forwards;
+  animation-delay: calc(0.1s * var(--li-index, 0));
+  opacity: 0;
+}
+
+.ai-capabilities-list li:nth-child(1) {
+  --li-index: 1;
+}
+
+.ai-capabilities-list li:nth-child(2) {
+  --li-index: 2;
+}
+
+.ai-capabilities-list li:nth-child(3) {
+  --li-index: 3;
+}
+
+.ai-capabilities-list li:nth-child(4) {
+  --li-index: 4;
+}
+
+.ai-capabilities-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  background-color: #8e24aa;
+  border-radius: 50%;
+  animation: pulseGlow 2s infinite;
+  animation-delay: calc(0.5s * var(--li-index, 0));
+}
+
+/* Enhanced encryption indicator with animation */
+.encryption-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #aaaaaa;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 15px;
+  margin: 5px auto;
+  max-width: fit-content;
+  transition: all 0.3s ease;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.encryption-indicator:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.encryption-icon {
+  color: #00c853;
+  margin-right: 5px;
+  animation: securePulse 2s infinite;
+}
+
+@keyframes securePulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Add responsive animations for mobile */
+@media (max-width: 576px) {
+  .message-bubble, 
+  .message-bubble.sent, 
+  .message-bubble.received,
+  .typing-indicator {
+    animation-duration: 0.2s;
+  }
+  
+  .ai-capabilities-list li {
+    animation-duration: 0.3s;
+  }
+}
+
+/* Apply the ai-message class to received messages when the sender is an AI */
+/* This class should be added via JS to the message bubble when the sender is an AI */
