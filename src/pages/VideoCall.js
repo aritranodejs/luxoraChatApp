@@ -1,10 +1,169 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import VideoCallComponent from '../components/VideoCall';
+// import VideoCallComponent from '../components/VideoCall';
 import { io } from "socket.io-client";
 import { getUser } from "../utils/authHelper";
 import Peer from "peerjs";
 import * as callHelper from "../utils/callHelper"; // Import call helper utilities
+
+// Add CSS for improved video call UI
+const videoCallStyles = {
+  container: {
+    position: 'relative',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: '#1a1a1a',
+    overflow: 'hidden',
+    color: '#fff',
+    fontFamily: 'Segoe UI, Roboto, Arial, sans-serif',
+  },
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '60px',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 20px',
+    zIndex: 10,
+    justifyContent: 'space-between',
+    backdropFilter: 'blur(10px)',
+  },
+  logo: {
+    fontWeight: 'bold',
+    fontSize: '1.2rem',
+  },
+  callInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  callType: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    padding: '5px 10px',
+    borderRadius: '15px',
+    fontSize: '0.9rem',
+  },
+  callTimer: {
+    fontSize: '0.9rem',
+  },
+  videoContainer: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  remoteVideo: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    position: 'absolute',
+    zIndex: 1,
+  },
+  localVideoContainer: {
+    position: 'absolute',
+    width: '180px',
+    height: '120px',
+    bottom: '100px',
+    right: '20px',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    border: '2px solid #fff',
+    zIndex: 3,
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+    transition: 'all 0.3s ease',
+  },
+  localVideo: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  controls: {
+    position: 'absolute',
+    bottom: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    gap: '15px',
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backdropFilter: 'blur(15px)',
+    padding: '10px 20px',
+    borderRadius: '50px',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+  },
+  controlButton: {
+    width: '50px',
+    height: '50px',
+    borderRadius: '50%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    color: 'white',
+    cursor: 'pointer',
+    border: 'none',
+    transition: 'all 0.2s ease',
+  },
+  endCallButton: {
+    backgroundColor: '#e74c3c',
+  },
+  statusMessage: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: '15px 25px',
+    borderRadius: '8px',
+    fontSize: '1.1rem',
+    zIndex: 20,
+    maxWidth: '80%',
+    textAlign: 'center',
+  },
+  errorMessage: {
+    position: 'absolute',
+    bottom: '80px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    backgroundColor: 'rgba(231, 76, 60, 0.9)',
+    color: 'white',
+    padding: '10px 20px',
+    borderRadius: '4px',
+    fontSize: '0.9rem',
+    zIndex: 100,
+    maxWidth: '80%',
+    textAlign: 'center',
+  },
+  reconnectButton: {
+    backgroundColor: '#3498db',
+    color: 'white',
+    border: 'none',
+    padding: '8px 15px',
+    borderRadius: '4px',
+    marginTop: '10px',
+    cursor: 'pointer',
+  },
+  debugInfo: {
+    position: 'absolute',
+    top: '70px',
+    right: '10px',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: '10px',
+    borderRadius: '4px',
+    fontSize: '0.8rem',
+    maxWidth: '300px',
+    zIndex: 100,
+  },
+};
 
 const VideoCall = () => {
   const { friendSlug } = useParams();
@@ -19,11 +178,16 @@ const VideoCall = () => {
   const [remoteStream, setRemoteStream] = useState(null);
   const [error, setError] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null); // For debugging
+  const [audioEnabled, setAudioEnabled] = useState(true); // Add state for audio
+  const [videoEnabled, setVideoEnabled] = useState(true); // Add state for video
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); // Add connection status state
   
   // Refs
   const peerRef = useRef(null);
   const connectionAttemptRef = useRef(0);
   const socketRef = useRef(null);
+  const localVideoRef = useRef(null); // Add ref for local video
+  const remoteVideoRef = useRef(null); // Add ref for remote video
   
   const userId = getUser()?.id;
   const socketUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:5000";
@@ -115,10 +279,23 @@ const VideoCall = () => {
       localStream.getTracks().forEach(track => track.stop());
     }
     
-    // Close peer connection
+    // Close peer connection - handle both PeerJS and direct WebRTC
     if (peerRef.current) {
       console.log("Destroying peer connection");
+      if (peerRef.current instanceof RTCPeerConnection) {
+        try {
+          peerRef.current.close();
+        } catch (e) {
+          console.error("Error closing RTCPeerConnection:", e);
+        }
+      } else {
+        // Assume it's a PeerJS instance
+        try {
       peerRef.current.destroy();
+        } catch (e) {
+          console.error("Error destroying PeerJS connection:", e);
+        }
+      }
     }
     
     // Clear any stored call data
@@ -144,22 +321,23 @@ const VideoCall = () => {
       connectionAttemptRef.current = attemptCount;
       
       console.log(`Setting up peer connection - attempt ${attemptCount}`);
+      setConnectionStatus('connecting');
       
       // Create a new Peer with a random ID to avoid collision
-      // IMPORTANT: Use the cloud PeerJS server by NOT specifying host, port, or path
       const randomId = `peer_${userId}_${Math.floor(Math.random() * 1000000)}`;
       
-      // Check if we should use a retry configuration
+      // Use a more reliable configuration that works across networks
       let peerConfig = {
-        // Don't rely on the public peerjs server which has connection limits
-        // Use a direct WebRTC connection with only STUN/TURN servers
+        // Use direct WebRTC connection with reliable STUN/TURN servers
         config: {
           'iceServers': [
-            // Public STUN servers
+            // Multiple STUN servers for better connectivity
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
-            // More reliable TURN servers
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            // Free reliable TURN servers
             {
               urls: [
                 'turn:openrelay.metered.ca:80',
@@ -170,95 +348,42 @@ const VideoCall = () => {
               username: 'openrelayproject',
               credential: 'openrelayproject'
             },
+            // Additional TURN options to increase reliability
             {
               urls: 'turn:numb.viagenie.ca',
               credential: 'muazkh',
               username: 'webrtc@live.com'
+            },
+            {
+              urls: 'turn:relay.metered.ca:80',
+              username: 'e8dd65f92c6c98a96aa6c99f',
+              credential: 'uBp3+Jz3ifJe8b/E'
             }
           ],
           'sdpSemantics': 'unified-plan',
           'iceCandidatePoolSize': 10
         },
-        // Increase debug level for better logs
-        debug: 3
-      };
-      
-      // If we're in a retry, use alternative configurations
-      if (attemptCount > 1) {
-        console.log(`Using alternative configuration for retry attempt ${attemptCount}`);
-        
-        // On second attempt, use a self-hosted configuration
-        if (attemptCount === 2) {
-          peerConfig = {
-            // Try without specifying host (use default PeerJS server)
-            debug: 3,
-            config: {
-              'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-              ]
-            }
-          };
-        }
-        // On third attempt, use a minimal configuration with highly reliable STUN/TURN
-        else if (attemptCount === 3) {
-          peerConfig = {
-            // Use PeerJS cloud server with minimal config
-            key: 'peerjs',
+        // Customize PeerJS to avoid connection issues
+        // Use a less congested server
             host: 'peerjs-server.herokuapp.com', 
             secure: true,
             port: 443,
+        path: '/',
+        // Set debug level
             debug: 3,
-            config: {
-              'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' },
-                {
-                  urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                  username: 'openrelayproject',
-                  credential: 'openrelayproject'
-                }
-              ]
-            }
-          };
-        }
-        // On fourth attempt, use only STUN (for restrictive networks)
-        else if (attemptCount === 4) {
-          peerConfig = {
-            // Try alternate PeerJS server
-            host: 'peerjs-server-v2.herokuapp.com',
-            secure: true,
-            port: 443,
-            debug: 3,
-            config: {
-              'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' }
-              ]
-            }
-          };
-        }
-        // On fifth attempt, try a completely different approach
-        else if (attemptCount >= 5) {
-          // As a last resort, try with no server and direct WebRTC only
-          peerConfig = {
-            config: {
-              'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:global.stun.twilio.com:3478?transport=udp' },
-                {
-                  urls: 'turn:numb.viagenie.ca',
-                  credential: 'muazkh',
-                  username: 'webrtc@live.com'
-                }
-              ]
-            }
-          };
-        }
-      }
+        // Increase connection timeout
+        pingInterval: 3000,
+        // Set a custom retry timeout
+        retryDelay: 1000
+      };
       
-      // Use the storedData's retryConfig if it exists (from advanced error handling)
-      if (storedData?.retryConfig) {
-        console.log("Using retry config from stored data:", storedData.retryConfig);
-        peerConfig.config = storedData.retryConfig;
+      // If we're in a retry and getting the same error, bypass PeerJS's server completely
+      if (attemptCount > 2) {
+        console.log(`Switching to pure WebRTC approach on attempt ${attemptCount}`);
+        
+        // Signal through our existing socket.io connection instead of PeerJS server
+        // Initialize the RTCPeerConnection directly
+        return setupDirectWebRTC(storedData, userMediaStream, randomId);
       }
       
       console.log(`Creating peer with ID: ${randomId}`);
@@ -291,14 +416,41 @@ const VideoCall = () => {
         console.log("Sent userId and inCall events to socket");
       });
       
+      // Handle socket errors better
       socket.on('connect_error', (err) => {
         console.error(`Socket connection error: ${err.message}`);
+        setError(`Socket connection error: ${err.message}. Retrying...`);
+        
+        // Try to reconnect socket after a delay
+        setTimeout(() => {
+          if (socket) {
+            console.log("Attempting to reconnect socket...");
+            socket.connect();
+          }
+        }, 2000);
       });
       
-      socket.emit("userId", userId);
-      console.log("Socket connected for signaling, userId:", userId);
+      // More reliable reconnection for socket
+      socket.on('disconnect', () => {
+        console.log("Socket disconnected. Will automatically try to reconnect.");
+        setConnectionStatus('disconnected');
+      });
       
-      // Add specific handler for incoming calls to support mid-call joins
+      // Immediately identify when socket connects or reconnects
+      socket.on('connect', () => {
+      socket.emit("userId", userId);
+        console.log("Socket connected/reconnected, sent userId:", userId);
+        
+        // Also re-announce call status on reconnect
+        socket.emit("inCall", {
+          userId,
+          friendId: storedData?.friendId,
+          callType,
+          peerId: randomId
+        });
+      });
+      
+      // Listen for incoming calls to support mid-call joins
       socket.on("incomingCall", (data) => {
         console.log("Received incomingCall event in VideoCall component:", data);
         
@@ -314,40 +466,86 @@ const VideoCall = () => {
             // Update session storage
             sessionStorage.setItem('callData', JSON.stringify(storedData));
           }
+          
+          // Check if this is a direct WebRTC connection request
+          if (data.directRTC && data.connectionId) {
+            console.log("This is a direct WebRTC call, switching to direct mode");
+            // Initialize direct WebRTC connection as receiver
+            setupDirectWebRTC(storedData, userMediaStream, data.connectionId);
+          }
         }
       });
       
-      // Handle direct call signals for more reliable peer connection
-      socket.on("directCallSignal", (data) => {
-        console.log("Received direct call signal:", data);
+      // Handle direct WebRTC ready signals
+      socket.on("rtc-ready", (data) => {
+        console.log("Received rtc-ready event:", data);
         
-        // Only process if this signal is for us and matches our current call
-        if (data.targetId === userId || data.friendId === userId) {
-          console.log("Processing direct call signal intended for us");
+        // If this signal is for us and is from our current call friend
+        if (data.targetId === userId && storedData?.friendId === data.userId) {
+          console.log("Friend is ready for direct WebRTC connection");
           
-          // Update peer ID if available
-          if (data.callerPeerId && storedData && !connectionEstablished) {
-            console.log("Updating peer ID from direct call signal");
-            storedData.friendPeerId = data.callerPeerId;
+          // If we're in direct WebRTC mode, try to initiate the connection
+          if (peerRef.current instanceof RTCPeerConnection) {
+            console.log("We're already in direct WebRTC mode, sending offer");
             
-            // Try to establish a connection if we're not the initiator
-            if (!storedData.isInitiator && peer) {
-              console.log("Attempting direct connection to caller's peer");
-              const call = peer.call(data.callerPeerId, userMediaStream);
-              
-              call.on('stream', (incomingStream) => {
-                console.log('Received remote stream via direct signal');
-                connectionEstablished = true;
-                setRemoteStream(incomingStream);
+            // Create offer
+            (async () => {
+              try {
+                // Create data channel (needed to start ICE gathering)
+                peerRef.current.createDataChannel('call-setup');
                 
-                setCallData(prev => ({
-                  ...prev,
-                  remoteStream: incomingStream,
-                  callInstance: call
-                }));
-              });
-            }
+                // Create offer
+                const offer = await peerRef.current.createOffer({
+                  offerToReceiveAudio: true,
+                  offerToReceiveVideo: callType === 'video',
+                });
+                
+                await peerRef.current.setLocalDescription(offer);
+                
+                // Send offer
+                socket.emit('rtc-signal', {
+                  type: 'offer',
+                  offer,
+                  senderId: userId,
+                  targetId: data.userId,
+                  connectionId: data.connectionId,
+                  callType
+                });
+              } catch (err) {
+                console.error("Error creating WebRTC offer:", err);
+              }
+            })();
+          } else if (peerRef.current) {
+            // We're still using PeerJS but should switch to direct
+            console.log("Friend is using direct WebRTC but we're still on PeerJS, switching...");
+            
+            // Switch to direct WebRTC
+            try {
+              peerRef.current.destroy();
+            } catch (e) {}
+            
+            setupDirectWebRTC(storedData, userMediaStream, data.connectionId);
           }
+        }
+      });
+      
+      // Add socket event handler for direct WebRTC fallback
+      socket.on('fallback-to-direct', (data) => {
+        if (data.targetId === userId) {
+          console.log("Server requested fallback to direct WebRTC");
+          
+          // If we're already in direct mode, ignore
+          if (peerRef.current instanceof RTCPeerConnection) {
+            console.log("Already in direct WebRTC mode, ignoring fallback request");
+            return;
+          }
+          
+          // Switch to direct WebRTC
+          try {
+            if (peerRef.current) peerRef.current.destroy();
+          } catch (e) {}
+          
+          setupDirectWebRTC(storedData, userMediaStream, data.connectionId || `fallback_${userId}_${Date.now()}`);
         }
       });
       
@@ -547,6 +745,7 @@ const VideoCall = () => {
               
               connectionEstablished = true;
               setRemoteStream(incomingStream);
+              setConnectionStatus('connected');
               
               // Play a sound to indicate connection established
               try {
@@ -639,6 +838,9 @@ const VideoCall = () => {
       peer.on('error', (err) => {
         console.error('Peer connection error:', err);
         
+        // Get current attempt count for this context
+        const currentAttemptCount = connectionAttemptRef.current;
+        
         // Notify via socket about the error to help debugging
         if (socket && socket.connected) {
           socket.emit('peerConnectionError', {
@@ -647,173 +849,386 @@ const VideoCall = () => {
             error: err.type,
             message: err.message,
             peerId: randomId,
-            attemptCount
+            attemptCount: currentAttemptCount
           });
         }
         
         let errorMessage;
+        let shouldAutoRetry = false;
+        
+        // Check for specific "Lost connection to server" error
+        const isLostConnectionError = 
+          (err.message && err.message.includes('Lost connection')) ||
+          (err.type === 'network') ||
+          (err.type === 'disconnected') ||
+          (err.type === 'socket-closed');
+        
+        if (isLostConnectionError) {
+          errorMessage = 'Lost connection to call server. Automatically reconnecting...';
+          setConnectionStatus('disconnected');
+          shouldAutoRetry = true;
+        } else {
+          // Handle other error types with appropriate messages and actions
         switch (err.type) {
           case 'peer-unavailable':
             errorMessage = 'Your friend appears to be offline or unavailable.';
+              setConnectionStatus('disconnected');
             break;
           case 'browser-incompatible':
             errorMessage = 'Your browser may not fully support video calls. Try using Chrome or Firefox.';
+              setConnectionStatus('error');
             break;
           case 'network':
-            errorMessage = 'Network connection issue. Please check your internet connection and trying again.';
+              errorMessage = 'Network connection issue. Reconnecting automatically...';
+              setConnectionStatus('error');
+              shouldAutoRetry = true;
             break;
           case 'disconnected':
-            errorMessage = 'Connection lost. Will try to reconnect automatically...';
+              errorMessage = 'Connection lost. Reconnecting automatically...';
+              setConnectionStatus('disconnected');
+              shouldAutoRetry = true;
             break;
           case 'server-error':
             errorMessage = 'Server connection error. Trying alternative connection method...';
+              setConnectionStatus('error');
+              shouldAutoRetry = true;
             break;
           case 'socket-error':
             errorMessage = 'Signaling server issue. Trying alternative connection approach...';
+              setConnectionStatus('error');
+              shouldAutoRetry = true;
             break;
           case 'socket-closed':
-            errorMessage = 'Signaling connection closed. Retrying with backup servers...';
+              errorMessage = 'Signaling connection closed. Trying with backup servers...';
+              setConnectionStatus('disconnected');
+              shouldAutoRetry = true;
+              break;
+            case 'unavailable-id':
+              errorMessage = 'Connection ID unavailable. Generating a new one and reconnecting...';
+              shouldAutoRetry = true;
             break;
           default:
-            errorMessage = `Connection error (${err.type}). Retrying with a different approach...`;
+              errorMessage = `Connection error: ${err.message || err.type}. Attempting to fix...`;
+              setConnectionStatus('error');
+              shouldAutoRetry = true;
+          }
         }
         
         setError(errorMessage);
         
-        // For network errors, we can try a more aggressive retry approach
-        if ((err.type === 'network' || err.type === 'disconnected' || err.type === 'server-error') && attemptCount < 5 && !callClosed) {
-          console.log(`Network error detected. Aggressive retry approach (attempt ${attemptCount + 1})`);
+        // Implement auto-retry logic with exponential backoff for ALL network errors
+        if (shouldAutoRetry && currentAttemptCount < 10 && !callClosed) {
+          const backoffDelay = Math.min(1000 * Math.pow(1.5, currentAttemptCount-1), 10000); // Exponential backoff, max 10 seconds
           
-          // Try with different ICE server configurations on each retry
-          const retryConfigs = [
-            // Try with pure Google STUN servers only
-            [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
-            ],
-            // Try with Twilio TURN servers
-            [
-              { urls: 'stun:stun.l.google.com:19302' },
-              {
-                urls: [
-                  'turn:global.turn.twilio.com:3478?transport=udp',
-                  'turn:global.turn.twilio.com:3478?transport=tcp'
-                ],
-                username: 'f4b4035eaa76f4a55de5f4351567653ee4ff6fa97b50b6b334fcc1be9c27212d',
-                credential: 'w1WpNmENT5ozGaKBUJM+c4tJjr7eSJlE8QOUTJwyF8w='
-              }
-            ],
-            // Try with TCP-only connection (for restrictive networks)
-            [
-              { urls: 'stun:stun.l.google.com:19302' },
-              {
-                urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
-                username: 'webrtc',
-                credential: 'webrtc'
-              }
-            ],
-            // Try with minimal configuration 
-            [
-              { urls: 'stun:stun.l.google.com:19302' }
-            ],
-            // Last resort: try with all possible servers
-            [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              { urls: 'stun:stun2.l.google.com:19302' },
-              { urls: 'stun:stun3.l.google.com:19302' },
-              { urls: 'stun:stun4.l.google.com:19302' },
-              {
-                urls: [
-                  'turn:global.turn.twilio.com:3478?transport=udp',
-                  'turn:global.turn.twilio.com:3478?transport=tcp'
-                ],
-                username: 'f4b4035eaa76f4a55de5f4351567653ee4ff6fa97b50b6b334fcc1be9c27212d',
-                credential: 'w1WpNmENT5ozGaKBUJM+c4tJjr7eSJlE8QOUTJwyF8w='
-              },
-              {
-                urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
-                username: 'webrtc',
-                credential: 'webrtc'
-              },
-              {
-                urls: 'turn:numb.viagenie.ca',
-                credential: 'muazkh',
-                username: 'webrtc@live.com'
-              },
-              {
-                urls: 'turn:relay.metered.ca:80',
-                username: 'e8dd65f92c6c98a96aa6c99f',
-                credential: 'uBp3+Jz3ifJe8b/E'
-              }
-            ]
-          ];
+          console.log(`Auto-retrying connection in ${backoffDelay}ms (attempt ${currentAttemptCount + 1})`);
           
-          // Destroy the current peer
-          if (peer) peer.destroy();
-          
-          // Wait a bit longer between retries for network stabilization
-          setTimeout(() => {
-            if (!callClosed) {
-              // Choose config based on attempt count, cycling through options
-              const configIndex = attemptCount % retryConfigs.length;
-              console.log(`Using retry config #${configIndex + 1}`);
-              
-              // Preserve the original data but with new ICE servers
-              const modifiedData = {
-                ...storedData,
-                retryConfig: {
-                  iceServers: retryConfigs[configIndex],
-                  iceCandidatePoolSize: 5
-                }
-              };
-              
-              setupPeerConnection(modifiedData, userMediaStream);
+          // Clean up the current peer connection
+          if (peer) {
+            try {
+              peer.destroy();
+            } catch (e) {
+              console.warn("Error destroying peer:", e);
             }
-          }, 2000); // 2 second delay for network stabilization
-        }
-        // For other errors, use the default retry approach
-        else if (attemptCount < 3 && !callClosed) {
-          console.log(`Regular retry for error (attempt ${attemptCount + 1})`);
+          }
           
-          // Destroy the current peer and retry with a different configuration
-          if (peer) peer.destroy();
-          
+          // Try to reconnect after backoff delay
           setTimeout(() => {
             if (!callClosed) {
+              console.log("Executing reconnection attempt");
               setupPeerConnection(storedData, userMediaStream);
             }
-          }, 1000);
+          }, backoffDelay);
+          
+          return; // Skip the regular retry flow below since we're handling it with auto-retry
+        }
+          
+        // For other persistent errors, return to chat
+        if (!shouldAutoRetry && currentAttemptCount >= 5) {
+          setError(`Could not establish a call after multiple attempts. Please try again later.`);
+          
+          // Show a button to return to chat
+          setDebugInfo(prev => ({
+            ...prev,
+            showReturnToChat: true
+          }));
         }
       });
       
       // Add a disconnected handler to try reconnecting
       peer.on('disconnected', () => {
         console.log('Peer disconnected. Attempting to reconnect...');
+        setConnectionStatus('disconnected');
+        setError('Connection temporarily lost. Attempting to reconnect...');
         
-        // Try to reconnect
+        // Try to reconnect immediately
         try {
           peer.reconnect();
+          
+          // If reconnect doesn't restore the connection quickly, do a full retry
+          setTimeout(() => {
+            if (peer.disconnected && !callClosed) {
+              console.log("Reconnect didn't restore connection quickly, doing full retry");
+              if (peer) {
+                try { peer.destroy(); } catch (e) {}
+              }
+              setupPeerConnection(storedData, userMediaStream);
+            }
+          }, 3000);
         } catch (e) {
           console.error('Error during reconnect attempt:', e);
           
-          // If reconnect fails, do a full retry
-          if (attemptCount < 5 && !callClosed) {
+          // Do a full retry immediately
             setTimeout(() => {
               if (!callClosed) {
-                if (peer) peer.destroy();
+              if (peer) {
+                try { peer.destroy(); } catch (e) {}
+              }
                 setupPeerConnection(storedData, userMediaStream);
               }
             }, 1000);
-          }
         }
       });
       
     } catch (err) {
       console.error('Error in setupPeerConnection:', err);
       setError(`Failed to set up connection: ${err.message}`);
+      
+      // If PeerJS setup failed, try direct WebRTC as fallback
+      if (connectionAttemptRef.current <= 3) {
+        console.log("PeerJS setup failed, trying direct WebRTC connection");
+        setTimeout(() => {
+          if (!callClosed) {
+            setupDirectWebRTC(storedData, userMediaStream, `direct_${userId}_${Math.floor(Math.random() * 1000000)}`);
+          }
+        }, 1000);
+      }
     }
   }, [callType, socketUrl, userId, friendSlug, handleEndCall, callClosed]);
+  
+  // Create a direct WebRTC connection that doesn't rely on PeerJS
+  const setupDirectWebRTC = useCallback(async (storedData, userMediaStream, connectionId) => {
+    console.log("Setting up direct WebRTC connection");
+    setConnectionStatus('connecting');
+    setError("Using direct connection method (more reliable)...");
+    
+    try {
+      // Track connection attempt
+      const attemptCount = connectionAttemptRef.current + 1;
+      connectionAttemptRef.current = attemptCount;
+      
+      // Create socket if it doesn't exist
+      if (!socketRef.current) {
+        const socket = io(socketUrl);
+        socketRef.current = socket;
+        
+        socket.on('connect', () => {
+          console.log(`Socket connected with ID: ${socket.id}`);
+          socket.emit("userId", userId);
+        });
+      }
+      
+      const socket = socketRef.current;
+      
+      // Create RTCPeerConnection with our ICE servers
+      const rtcConfig = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { 
+            urls: [
+              'turn:openrelay.metered.ca:443?transport=tcp',
+              'turn:openrelay.metered.ca:80'
+            ],
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
+        ],
+        iceCandidatePoolSize: 10
+      };
+      
+      const peerConnection = new RTCPeerConnection(rtcConfig);
+      peerRef.current = peerConnection; // Store in ref for cleanup
+      
+      // Add local tracks to connection
+      userMediaStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, userMediaStream);
+        console.log(`Added ${track.kind} track to RTCPeerConnection`);
+      });
+      
+      // Listen for remote stream
+      peerConnection.ontrack = (event) => {
+        console.log("Received remote track:", event);
+        if (event.streams && event.streams[0]) {
+          console.log("Setting remote stream from track event");
+          setRemoteStream(event.streams[0]);
+          
+          setCallData(prev => ({
+            ...prev,
+            remoteStream: event.streams[0],
+            callInstance: peerConnection
+          }));
+          
+          setConnectionStatus('connected');
+        }
+      };
+      
+      // Handle ICE candidates
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log("Generated ICE candidate");
+          // Send candidate to peer via socket
+          socket.emit('rtc-signal', {
+            type: 'ice-candidate',
+            candidate: event.candidate,
+            senderId: userId,
+            targetId: storedData.friendId,
+            connectionId
+          });
+        }
+      };
+      
+      // Handle connection state changes
+      peerConnection.oniceconnectionstatechange = () => {
+        console.log("ICE connection state:", peerConnection.iceConnectionState);
+        
+        switch (peerConnection.iceConnectionState) {
+          case 'connected':
+          case 'completed':
+            setConnectionStatus('connected');
+            setError(null);
+            break;
+          case 'failed':
+            setConnectionStatus('error');
+            setError("Connection failed. Trying to reconnect...");
+            
+            // Try to restart ICE
+            try {
+              peerConnection.restartIce();
+            } catch (e) {
+              console.error("Error restarting ICE:", e);
+            }
+            break;
+          case 'disconnected':
+            setConnectionStatus('disconnected');
+            setError("Connection temporarily disconnected. Reconnecting...");
+            break;
+        }
+      };
+      
+      // Set up signaling through socket.io
+      socket.on('rtc-signal', async (data) => {
+        // Only process signals meant for us
+        if (data.targetId !== userId) return;
+        
+        try {
+          if (data.type === 'offer' && data.senderId === storedData.friendId) {
+            console.log("Received WebRTC offer");
+            
+            // Set remote description
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            
+            // Create answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            // Send answer back
+            socket.emit('rtc-signal', {
+              type: 'answer',
+              answer,
+              senderId: userId,
+              targetId: data.senderId,
+              connectionId
+            });
+          } 
+          else if (data.type === 'answer' && data.senderId === storedData.friendId) {
+            console.log("Received WebRTC answer");
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+          } 
+          else if (data.type === 'ice-candidate' && data.senderId === storedData.friendId) {
+            console.log("Received ICE candidate");
+            try {
+              await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (e) {
+              console.error("Error adding ICE candidate:", e);
+            }
+          }
+        } catch (err) {
+          console.error("Error handling WebRTC signal:", err);
+        }
+      });
+      
+      // If we should initiate the call (outgoing call)
+      if (storedData.isInitiator) {
+        console.log("Creating and sending WebRTC offer");
+        
+        // Create data channel (needed to start ICE gathering)
+        peerConnection.createDataChannel('call-setup');
+        
+        // Create offer
+        const offer = await peerConnection.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: callType === 'video',
+        });
+        
+        await peerConnection.setLocalDescription(offer);
+        
+        // Send offer to peer via socket
+        socket.emit('rtc-signal', {
+          type: 'offer',
+          offer,
+          senderId: userId,
+          targetId: storedData.friendId,
+          connectionId,
+          callType
+        });
+        
+        // Notify via regular call channel too
+        socket.emit('inCall', {
+          userId,
+          friendId: storedData.friendId,
+          callType,
+          directRTC: true,
+          connectionId
+        });
+      } else {
+        // For incoming calls, announce we're ready for a connection
+        socket.emit('rtc-ready', {
+          userId,
+          targetId: storedData.friendId,
+          connectionId,
+          callType
+        });
+      }
+      
+      // Update call data for UI
+      setCallData(prev => ({
+        ...prev,
+        localStream: userMediaStream,
+        callInstance: peerConnection,
+        directRTC: true
+      }));
+      
+      // Return success
+      return true;
+    } catch (err) {
+      console.error("Error setting up direct WebRTC:", err);
+      setError(`Direct WebRTC setup failed: ${err.message}. Please refresh and try again.`);
+      return false;
+    }
+  }, [userId, socketUrl, callType]);
+  
+  // Add cleanup for direct WebRTC
+  useEffect(() => {
+    return () => {
+      // When component unmounts, clean up WebRTC connection if it exists
+      if (peerRef.current instanceof RTCPeerConnection) {
+        try {
+          peerRef.current.close();
+        } catch (e) {
+          console.error("Error closing RTCPeerConnection:", e);
+        }
+      }
+    };
+  }, []);
   
   // Initial effect to load call data from storage
   useEffect(() => {
@@ -1002,8 +1417,21 @@ const VideoCall = () => {
         }
         
         if (peerRef.current) {
-          console.log("Destroying peer connection");
+          console.log("Cleaning up peer connection");
+          if (peerRef.current instanceof RTCPeerConnection) {
+            try {
+              peerRef.current.close();
+            } catch (e) {
+              console.error("Error closing RTCPeerConnection:", e);
+            }
+          } else {
+            // Assume it's a PeerJS instance
+            try {
           peerRef.current.destroy();
+            } catch (e) {
+              console.error("Error destroying PeerJS connection:", e);
+            }
+          }
         }
         
         // Clear any stored call data
@@ -1152,7 +1580,211 @@ const VideoCall = () => {
   }
 
   console.log("Rendering VideoCallComponent with call data");
-  return <VideoCallComponent callData={callData} onEndCall={handleEndCall} />;
+  return (
+    <div style={videoCallStyles.container}>
+      {/* Header with call info */}
+      <div style={videoCallStyles.header}>
+        <div style={videoCallStyles.logo}>Luxora Call</div>
+        <div style={videoCallStyles.callInfo}>
+          <div style={videoCallStyles.callType}>
+            {callType === 'video' ? (
+              <>
+                <span role="img" aria-label="video">🎥</span> Video
+              </>
+            ) : (
+              <>
+                <span role="img" aria-label="audio">🎧</span> Audio
+              </>
+            )}
+          </div>
+          <div>with {callData?.friendName || friendName}</div>
+          <CallTimer 
+            startTime={remoteStream ? Date.now() : null} 
+            isCallConnected={!!remoteStream}
+          />
+        </div>
+      </div>
+      
+      {/* Video container */}
+      <div style={videoCallStyles.videoContainer}>
+        {/* Remote video (shows placeholder if no stream) */}
+        {remoteStream ? (
+          <video
+            ref={remoteVideoRef}
+            style={videoCallStyles.remoteVideo}
+            autoPlay
+            playsInline
+          />
+        ) : (
+          <div style={{
+            ...videoCallStyles.remoteVideo,
+            backgroundColor: '#2c3e50',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            fontSize: '5rem',
+          }}>
+            {callData?.friendName?.charAt(0)?.toUpperCase() || 'U'}
+          </div>
+        )}
+        
+        {/* Local video */}
+        {localStream && callType === 'video' && (
+          <div style={videoCallStyles.localVideoContainer}>
+            <video
+              ref={localVideoRef}
+              style={videoCallStyles.localVideo}
+              autoPlay
+              playsInline
+              muted
+            />
+          </div>
+        )}
+        
+        {/* Controls */}
+        <div style={videoCallStyles.controls}>
+          <button 
+            style={{
+              ...videoCallStyles.controlButton,
+              backgroundColor: audioEnabled ? 'rgba(255, 255, 255, 0.15)' : '#e74c3c'
+            }}
+            onClick={() => {
+              if (localStream) {
+                const audioTracks = localStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                  const newEnabled = !audioEnabled;
+                  audioTracks.forEach(track => {
+                    track.enabled = newEnabled;
+                  });
+                  setAudioEnabled(newEnabled);
+                }
+              }
+            }}
+            title={audioEnabled ? 'Mute' : 'Unmute'}
+          >
+            {audioEnabled ? '🎙️' : '🔇'}
+          </button>
+          
+          {callType === 'video' && (
+            <button 
+              style={{
+                ...videoCallStyles.controlButton,
+                backgroundColor: videoEnabled ? 'rgba(255, 255, 255, 0.15)' : '#e74c3c'  
+              }}
+              onClick={() => {
+                if (localStream) {
+                  const videoTracks = localStream.getVideoTracks();
+                  if (videoTracks.length > 0) {
+                    const newEnabled = !videoEnabled;
+                    videoTracks.forEach(track => {
+                      track.enabled = newEnabled;
+                    });
+                    setVideoEnabled(newEnabled);
+                  }
+                }
+              }}
+              title={videoEnabled ? 'Turn off camera' : 'Turn on camera'}
+            >
+              {videoEnabled ? '📹' : '🚫'}
+            </button>
+          )}
+          
+          <button 
+            style={{...videoCallStyles.controlButton, ...videoCallStyles.endCallButton}}
+            onClick={handleEndCall}
+            title="End call"
+          >
+            ��
+          </button>
+        </div>
+        
+        {/* Connection status message */}
+        <ConnectionStatus status={connectionStatus} />
+        
+        {/* Error message */}
+        {error && (
+          <div style={videoCallStyles.errorMessage}>
+            {error}
+            <br />
+            <button 
+              style={videoCallStyles.reconnectButton}
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+        
+        {/* Debug info */}
+        {debugInfo && (
+          <div style={videoCallStyles.debugInfo}>
+            <div>Status: {debugInfo.connectionStatus}</div>
+            <div>Remote Stream: {debugInfo.remoteStreamAvailable ? '✅' : '❌'}</div>
+            <div>Local Stream: {debugInfo.localStreamAvailable ? '✅' : '❌'}</div>
+            <div>Peer Connected: {debugInfo.peerConnected ? '✅' : '❌'}</div>
+            <div>Socket Connected: {debugInfo.socketConnected ? '✅' : '❌'}</div>
+            <div>Attempt: {debugInfo.attemptCount}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Create a call timer component
+const CallTimer = ({ startTime, isCallConnected }) => {
+  const [duration, setDuration] = useState(0);
+  
+  useEffect(() => {
+    let interval;
+    
+    if (isCallConnected && startTime) {
+      interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setDuration(elapsed);
+      }, 1000);
+    }
+    
+    return () => clearInterval(interval);
+  }, [isCallConnected, startTime]);
+  
+  // Format the duration in MM:SS format
+  const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  if (!isCallConnected) return null;
+  
+  return (
+    <div style={videoCallStyles.callTimer}>
+      {formatDuration(duration)}
+    </div>
+  );
+};
+
+// Add status message component
+const ConnectionStatus = ({ status, error }) => {
+  // Map connection status to user-friendly messages
+  const statusMessages = {
+    initializing: "Initializing call...",
+    connecting: "Connecting...",
+    awaiting_peer: "Waiting for peer to connect...",
+    connected: "", // No message when connected
+    disconnected: "Connection lost. Attempting to reconnect...",
+    ended: "Call ended",
+    error: error || "Connection error. Please try again."
+  };
+  
+  // Don't show anything if connected or no status
+  if (!status || status === "connected") return null;
+  
+  return (
+    <div style={videoCallStyles.statusMessage}>
+      {statusMessages[status] || "Establishing connection..."}
+    </div>
+  );
 };
 
 export default VideoCall; 

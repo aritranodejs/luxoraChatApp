@@ -252,48 +252,60 @@ const VideoCallComponent = ({ callData, onEndCall }) => {
       </div>
       
       <div className="call-controls">
+        {/* Mute button */}
         <button 
           className={`control-btn ${muted ? 'control-btn-active' : ''}`}
           onClick={toggleMute}
-          title={muted ? "Unmute" : "Mute"}
+          aria-label={muted ? "Unmute microphone" : "Mute microphone"}
         >
           <FontAwesomeIcon icon={muted ? faMicrophoneSlash : faMicrophone} />
         </button>
         
-        <button 
-          className="control-btn control-btn-end" 
-          onClick={handleEndCall}
-          title="End Call"
-        >
-          <FontAwesomeIcon icon={faPhoneSlash} />
-        </button>
-        
+        {/* Video toggle button - only for video calls */}
         {callData.callType === 'video' && (
           <button 
             className={`control-btn ${videoOff ? 'control-btn-active' : ''}`}
             onClick={toggleVideo}
-            title={videoOff ? "Turn Camera On" : "Turn Camera Off"}
+            aria-label={videoOff ? "Turn on camera" : "Turn off camera"}
           >
             <FontAwesomeIcon icon={videoOff ? faVideoSlash : faVideo} />
           </button>
         )}
         
+        {/* Speaker toggle button */}
         <button 
           className={`control-btn ${speakerOff ? 'control-btn-active' : ''}`}
           onClick={toggleSpeaker}
-          title={speakerOff ? "Turn Speaker On" : "Turn Speaker Off"}
+          aria-label={speakerOff ? "Turn on speaker" : "Turn off speaker"}
         >
           <FontAwesomeIcon icon={speakerOff ? faVolumeMute : faVolumeUp} />
         </button>
         
+        {/* Fullscreen toggle button */}
         <button 
-          className={`control-btn ${isFullScreen ? 'control-btn-active' : ''}`}
+          className="control-btn" 
           onClick={toggleFullScreen}
-          title={isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          aria-label={isFullScreen ? "Exit fullscreen" : "Enter fullscreen"}
         >
           <FontAwesomeIcon icon={isFullScreen ? faCompress : faExpand} />
         </button>
+        
+        {/* End call button */}
+        <button 
+          className="control-btn end-call-btn" 
+          onClick={handleEndCall}
+          aria-label="End call"
+        >
+          <FontAwesomeIcon icon={faPhoneSlash} />
+        </button>
       </div>
+      
+      {/* Connection status indicators */}
+      {connectionState === 'connecting' && (
+        <div className="connection-status">
+          <p>Establishing connection...</p>
+        </div>
+      )}
     </div>
   );
 };

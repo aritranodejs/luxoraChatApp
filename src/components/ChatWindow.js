@@ -80,9 +80,9 @@ const ChatWindow = ({ friendSlug }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [onlineStatus, setOnlineStatus] = useState(false);
-  const [friendPeerId, setFriendPeerId] = useState("");
+  const [friendPeerId, setFriendPeerId] = useState(null);
   const [friendName, setFriendName] = useState("");
-  const [friendId, setFriendId] = useState("");
+  const [friendId, setFriendId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(false);
@@ -137,6 +137,10 @@ const ChatWindow = ({ friendSlug }) => {
 
   // Add a flag to track if PeerJS should be initialized
   const [shouldInitPeer, setShouldInitPeer] = useState(false);
+
+  // Add isAI to the state variables
+  const [friendData, setFriendData] = useState(null);
+  const [isAI, setIsAI] = useState(false);
 
   // Create a more reliable sound player function
   const playNotificationSound = useCallback((soundType = 'message') => {
@@ -642,7 +646,7 @@ const ChatWindow = ({ friendSlug }) => {
       
       // Re-emit userId on reconnect to ensure server knows who we are
       if (userId) {
-        socket.current.emit("userId", userId);
+      socket.current.emit("userId", userId);
         console.log("Re-emitted userId on socket connect:", userId);
       }
     });
@@ -1327,7 +1331,7 @@ const ChatWindow = ({ friendSlug }) => {
     };
   }, [friendId, userId, endCall, activeCall, incomingCall, friendSlug]);
 
-  // Update the fetchFriendData function to handle 404 properly
+  // Update the fetchFriendData function to set the isAI state
   useEffect(() => {
     const fetchFriendData = async () => {
       try {
@@ -1353,6 +1357,14 @@ const ChatWindow = ({ friendSlug }) => {
           setFriendPeerId(friendData.peerId);
           setFriendLastSeen(friendData.lastSeen || null);
           setShouldInitPeer(true); // Initialize PeerJS only when friend exists
+          
+          // Store complete friend data
+          setFriendData(friendData);
+          
+          // Check if the friend is an AI
+          setIsAI(!!friendData.isAI);
+          
+          console.log(`Friend ${friendData.name} isAI:`, !!friendData.isAI);
         }
       } catch (error) {
         console.error("Error fetching friend data:", error);
@@ -2264,7 +2276,7 @@ const ChatWindow = ({ friendSlug }) => {
                 </button>
               )}
               
-              {!activeCall ? (
+              {!activeCall && !isAI ? (
                 <>
                   <button className="header-btn" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")} title="Start audio call">
                     <FaPhoneAlt />
@@ -2273,11 +2285,11 @@ const ChatWindow = ({ friendSlug }) => {
                     <FaVideo />
                   </button>
                 </>
-              ) : (
+              ) : activeCall ? (
                 <button className="header-btn end-call" onClick={endCall}>
                   <FaPhoneSlash />
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -2315,80 +2327,138 @@ const ChatWindow = ({ friendSlug }) => {
                         <span className="action-icon">💬</span>
                         <span>Message</span>
                       </button>
-                      <button className="action-btn call" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")}>
-                        <span className="action-icon">📞</span>
-                        <span>Call</span>
-                      </button>
-                      <button className="action-btn video" onClick={() => startCall(friendId, friendPeerId, friendName, "video")}>
-                        <span className="action-icon">📹</span>
-                        <span>Video</span>
-                      </button>
+                      {!isAI && (
+                        <>
+                          <button className="action-btn call" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")}>
+                            <span className="action-icon">📞</span>
+                            <span>Call</span>
+                          </button>
+                          <button className="action-btn video" onClick={() => startCall(friendId, friendPeerId, friendName, "video")}>
+                            <span className="action-icon">📹</span>
+                            <span>Video</span>
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   
                   <div className="friend-info-section">
-                    <div className="info-item">
-                      <div className="info-label">About</div>
-                      <div className="info-value">Hey there! I'm using Luxora Chat.</div>
-                    </div>
-                    
-                    <div className="info-item">
-                      <div className="info-label">Email</div>
-                      <div className="info-value">{friendName?.toLowerCase().replace(/\s+/g, '')}@example.com</div>
-                    </div>
-                    
-                    <div className="info-item">
-                      <div className="info-label">Media, Links and Docs</div>
-                      <div className="info-value media-preview">
-                        {sharedMedia.map((media, index) => (
-                          <div className="media-item" key={index}>
-                            <img src={media.url} alt="Shared media" />
-                            <div className="media-date">{media.date}</div>
+                    {isAI ? (
+                      <>
+                        <div className="info-item">
+                          <div className="info-label">AI Assistant</div>
+                          <div className="info-value">
+                            This is an AI assistant that can help you with various tasks and answer your questions.
                           </div>
-                        ))}
-                      </div>
-                      <div className="view-all">
-                        See all
-                      </div>
-                    </div>
-                    
-                    <div className="info-item">
-                      <div className="info-label">Notifications</div>
-                      <div className="notifications-row">
-                        <div className="notifications-text">
-                          {showNotifications ? 'Notifications are ON' : 'Notifications are OFF'}
                         </div>
-                        <div className="toggle-switch" onClick={toggleNotifications}>
-                          <input 
-                            type="checkbox" 
-                            id="notification-toggle" 
-                            checked={showNotifications} 
-                            onChange={toggleNotifications} 
-                          />
-                          <label htmlFor="notification-toggle"></label>
+                        
+                        <div className="info-item">
+                          <div className="info-label">Capabilities</div>
+                          <div className="info-value">
+                            <ul className="ai-capabilities-list">
+                              <li>Answering questions</li>
+                              <li>Providing information</li>
+                              <li>Helping with tasks</li>
+                              <li>Engaging in conversation</li>
+                            </ul>
+                          </div>
                         </div>
-                      </div>
-                      {showNotifications && notificationPermission !== 'granted' && (
-                        <div className="notification-permission mt-2">
-                          <p className="text-warning small mb-2">Browser notifications not enabled.</p>
-                          <button
-                            className="btn btn-sm btn-outline-primary" 
-                            onClick={requestNotificationPermission}
-                          >
-                            Enable Browser Notifications
-                          </button>
+                        
+                        <div className="info-item">
+                          <div className="info-label">Notifications</div>
+                          <div className="notifications-row">
+                            <div className="notifications-text">
+                              {showNotifications ? 'Notifications are ON' : 'Notifications are OFF'}
+                            </div>
+                            <div className="toggle-switch" onClick={toggleNotifications}>
+                              <input 
+                                type="checkbox" 
+                                id="notification-toggle" 
+                                checked={showNotifications} 
+                                onChange={toggleNotifications} 
+                              />
+                              <label htmlFor="notification-toggle"></label>
+                            </div>
+                          </div>
+                          {showNotifications && notificationPermission !== 'granted' && (
+                            <div className="notification-permission mt-2">
+                              <p className="text-warning small mb-2">Browser notifications not enabled.</p>
+                              <button
+                                className="btn btn-sm btn-outline-primary" 
+                                onClick={requestNotificationPermission}
+                              >
+                                Enable Browser Notifications
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    
-                    <div className="info-item danger-zone">
-                      <div className="danger-action" onClick={handleBlock}>
-                        <FaShieldAlt className="danger-icon" /> Block {friendName}
-                      </div>
-                      <div className="danger-action" onClick={handleReport}>
-                        <FaFlag className="danger-icon" /> Report {friendName}
-                      </div>
-                    </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="info-item">
+                          <div className="info-label">About</div>
+                          <div className="info-value">Hey there! I'm using Luxora Chat.</div>
+                        </div>
+                        
+                        <div className="info-item">
+                          <div className="info-label">Email</div>
+                          <div className="info-value">{friendName?.toLowerCase().replace(/\s+/g, '')}@example.com</div>
+                        </div>
+                        
+                        <div className="info-item">
+                          <div className="info-label">Media, Links and Docs</div>
+                          <div className="info-value media-preview">
+                            {sharedMedia.map((media, index) => (
+                              <div className="media-item" key={index}>
+                                <img src={media.url} alt="Shared media" />
+                                <div className="media-date">{media.date}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="view-all">
+                            See all
+                          </div>
+                        </div>
+                        
+                        <div className="info-item">
+                          <div className="info-label">Notifications</div>
+                          <div className="notifications-row">
+                            <div className="notifications-text">
+                              {showNotifications ? 'Notifications are ON' : 'Notifications are OFF'}
+                            </div>
+                            <div className="toggle-switch" onClick={toggleNotifications}>
+                              <input 
+                                type="checkbox" 
+                                id="notification-toggle" 
+                                checked={showNotifications} 
+                                onChange={toggleNotifications} 
+                              />
+                              <label htmlFor="notification-toggle"></label>
+                            </div>
+                          </div>
+                          {showNotifications && notificationPermission !== 'granted' && (
+                            <div className="notification-permission mt-2">
+                              <p className="text-warning small mb-2">Browser notifications not enabled.</p>
+                              <button
+                                className="btn btn-sm btn-outline-primary" 
+                                onClick={requestNotificationPermission}
+                              >
+                                Enable Browser Notifications
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="info-item danger-zone">
+                          <div className="danger-action" onClick={handleBlock}>
+                            <FaShieldAlt className="danger-icon" /> Block {friendName}
+                          </div>
+                          <div className="danger-action" onClick={handleReport}>
+                            <FaFlag className="danger-icon" /> Report {friendName}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
