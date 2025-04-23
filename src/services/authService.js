@@ -1,5 +1,5 @@
 import { getResponse } from "../utils/responseHelper";
-import { getAuthToken } from "../utils/authHelper";
+import { getAuthToken, getRefreshToken } from "../utils/authHelper";
 
 export async function register(name, email, password) {
     try {
@@ -85,6 +85,30 @@ export async function me() {
     } catch (error) {
         console.error("Me error:", error);
         throw error; // Re-throw the error
+    }
+}
+
+export async function refreshToken() {
+    try {
+        const refreshToken = getRefreshToken();
+        if (!refreshToken) {
+            throw new Error("No refresh token available");
+        }
+
+        const response = await getResponse("auth/refresh", "POST", null, {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${refreshToken}`,
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw data;
+        }
+
+        return data;
+    } catch (error) {
+        console.error("Refresh token error:", error);
+        throw error;
     }
 }
 

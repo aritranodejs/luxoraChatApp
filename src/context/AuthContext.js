@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext } from "react";
 import { register, login, sendOtp, verifyOtp, me, logout } from "../services/authService"; // Import the login function
-import { setEmail, getEmail, removeEmail, setAuthToken, getAuthToken, removeAuthToken, setUser, removeUser } from "../utils/authHelper";
+import { setEmail, getEmail, removeEmail, setAuthToken, getAuthToken, removeAuthToken, setUser, removeUser, setRefreshToken, removeRefreshToken } from "../utils/authHelper";
 
 const AuthContext = createContext();
 
@@ -42,7 +42,8 @@ export const AuthProvider = ({ children }) => {
       console.log("OTP Verified:", data);
 
       setIsLoggedIn(true);
-      setAuthToken(data?.data?.authToken);
+      setAuthToken(data?.data?.accessToken);
+      setRefreshToken(data?.data?.refreshToken);
       setUser(data?.data);
     } catch (error) {
       console.error("Send OTP error:", error);
@@ -66,6 +67,7 @@ export const AuthProvider = ({ children }) => {
       console.log("Logged out:", data);
       setIsLoggedIn(false);
       removeAuthToken();
+      removeRefreshToken();
       removeEmail();
       removeUser();
     } catch (error) {
