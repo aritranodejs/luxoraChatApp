@@ -2159,17 +2159,23 @@ html, body {
   font-size: 12px;
   padding: 4px 8px;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  opacity: 1; /* Changed from 0 to make copy button always visible */
+  transition: background-color 0.2s ease;
   z-index: 10;
 }
 
 .message-bubble pre:hover .code-copy-btn {
-  opacity: 1;
+  background-color: rgba(80, 85, 95, 0.9);
 }
 
 .code-copy-btn:hover {
-  background-color: rgba(80, 85, 95, 0.9);
+  background-color: rgba(100, 105, 115, 0.9);
+}
+
+/* Add visible focus state for accessibility */
+.code-copy-btn:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 1px;
 }
 
 /* Inline Code */

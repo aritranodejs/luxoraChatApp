@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getUser, getAccessToken } from "../utils/authHelper";
+import { getUser } from "../utils/authHelper";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "react-bootstrap";
 import { getFriendRequests, acceptOrRejectRequest } from "../services/friendService";

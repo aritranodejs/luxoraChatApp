@@ -2216,7 +2216,9 @@ const ChatWindow = ({ friendSlug }) => {
       const placeholder = `__CODE_BLOCK_${index}__`;
       const escapedCode = escapeHtml(block.code);
       
-      const codeHtml = `<pre data-language="${block.language}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" data-code="${encodeURIComponent(block.code)}">Copy</button></pre>`;
+      // Add a unique ID to the code block for easier selection
+      const blockId = `code-block-${Date.now()}-${index}`;
+      const codeHtml = `<pre data-language="${block.language}" id="${blockId}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" onclick="window.copyCodeBlock('${blockId}')">Copy</button></pre>`;
       
       formattedMessage = formattedMessage.replace(placeholder, codeHtml);
     });
@@ -2253,6 +2255,80 @@ const ChatWindow = ({ friendSlug }) => {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
   };
+
+  // Add a global function for copying code blocks
+  useEffect(() => {
+    // Add the copy function to the window object so it can be called from HTML
+    window.copyCodeBlock = (blockId) => {
+      const codeBlock = document.getElementById(blockId);
+      if (!codeBlock) return;
+      
+      const codeElement = codeBlock.querySelector('code');
+      if (!codeElement) return;
+      
+      const code = codeElement.innerText;
+      const button = codeBlock.querySelector('.code-copy-btn');
+      
+      // Use the clipboard API to copy the text
+      navigator.clipboard.writeText(code)
+        .then(() => {
+          // Visual feedback
+          const originalText = button.textContent;
+          button.textContent = 'Copied!';
+          button.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
+          
+          setTimeout(() => {
+            button.textContent = originalText;
+            button.style.backgroundColor = '';
+          }, 2000);
+        })
+        .catch(err => {
+          console.error('Failed to copy: ', err);
+          
+          // Fallback method for older browsers
+          const textarea = document.createElement('textarea');
+          textarea.value = code;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          
+          try {
+            const successful = document.execCommand('copy');
+            
+            if (successful) {
+              const originalText = button.textContent;
+              button.textContent = 'Copied!';
+              button.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
+              
+              setTimeout(() => {
+                button.textContent = originalText;
+                button.style.backgroundColor = '';
+              }, 2000);
+            } else {
+              button.textContent = 'Failed';
+              button.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
+              
+              setTimeout(() => {
+                button.textContent = 'Copy';
+                button.style.backgroundColor = '';
+              }, 2000);
+            }
+          } catch (err) {
+            console.error('Fallback: Failed to copy', err);
+            button.textContent = 'Failed';
+          }
+          
+          document.body.removeChild(textarea);
+        });
+    };
+    
+    return () => {
+      // Clean up
+      delete window.copyCodeBlock;
+    };
+  }, []);
 
   // Add handlePaste function
   const handlePaste = (e) => {
