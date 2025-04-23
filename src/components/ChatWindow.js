@@ -2295,19 +2295,19 @@ const ChatWindow = ({ friendSlug }) => {
       const button = codeBlock.querySelector('.code-copy-btn');
       
       // Use the clipboard API to copy the text
-      navigator.clipboard.writeText(code)
-        .then(() => {
+        navigator.clipboard.writeText(code)
+          .then(() => {
           // Visual feedback
           const originalText = button.textContent;
           button.textContent = 'Copied!';
           button.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
           
-          setTimeout(() => {
+            setTimeout(() => {
             button.textContent = originalText;
             button.style.backgroundColor = '';
-          }, 2000);
-        })
-        .catch(err => {
+            }, 2000);
+          })
+          .catch(err => {
           console.error('Failed to copy: ', err);
           
           // Fallback method for older browsers
@@ -2327,10 +2327,10 @@ const ChatWindow = ({ friendSlug }) => {
               button.textContent = 'Copied!';
               button.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
               
-              setTimeout(() => {
+            setTimeout(() => {
                 button.textContent = originalText;
                 button.style.backgroundColor = '';
-              }, 2000);
+            }, 2000);
             } else {
               button.textContent = 'Failed';
               button.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
@@ -2494,14 +2494,14 @@ const ChatWindow = ({ friendSlug }) => {
                       </button>
                       {!isAI && (
                         <>
-                          <button className="action-btn call" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")}>
-                            <span className="action-icon">📞</span>
-                            <span>Call</span>
-                          </button>
-                          <button className="action-btn video" onClick={() => startCall(friendId, friendPeerId, friendName, "video")}>
-                            <span className="action-icon">📹</span>
-                            <span>Video</span>
-                          </button>
+                      <button className="action-btn call" onClick={() => startCall(friendId, friendPeerId, friendName, "audio")}>
+                        <span className="action-icon">📞</span>
+                        <span>Call</span>
+                      </button>
+                      <button className="action-btn video" onClick={() => startCall(friendId, friendPeerId, friendName, "video")}>
+                        <span className="action-icon">📹</span>
+                        <span>Video</span>
+                      </button>
                         </>
                       )}
                     </div>
@@ -2560,68 +2560,68 @@ const ChatWindow = ({ friendSlug }) => {
                       </>
                     ) : (
                       <>
-                        <div className="info-item">
-                          <div className="info-label">About</div>
-                          <div className="info-value">Hey there! I'm using Luxora Chat.</div>
-                        </div>
-                        
-                        <div className="info-item">
-                          <div className="info-label">Email</div>
-                          <div className="info-value">{friendName?.toLowerCase().replace(/\s+/g, '')}@example.com</div>
-                        </div>
-                        
-                        <div className="info-item">
-                          <div className="info-label">Media, Links and Docs</div>
-                          <div className="info-value media-preview">
-                            {sharedMedia.map((media, index) => (
-                              <div className="media-item" key={index}>
-                                <img src={media.url} alt="Shared media" />
-                                <div className="media-date">{media.date}</div>
-                              </div>
-                            ))}
+                    <div className="info-item">
+                      <div className="info-label">About</div>
+                      <div className="info-value">Hey there! I'm using Luxora Chat.</div>
+                    </div>
+                    
+                    <div className="info-item">
+                      <div className="info-label">Email</div>
+                      <div className="info-value">{friendName?.toLowerCase().replace(/\s+/g, '')}@example.com</div>
+                    </div>
+                    
+                    <div className="info-item">
+                      <div className="info-label">Media, Links and Docs</div>
+                      <div className="info-value media-preview">
+                        {sharedMedia.map((media, index) => (
+                          <div className="media-item" key={index}>
+                            <img src={media.url} alt="Shared media" />
+                            <div className="media-date">{media.date}</div>
                           </div>
-                          <div className="view-all">
-                            See all
-                          </div>
+                        ))}
+                      </div>
+                      <div className="view-all">
+                        See all
+                      </div>
+                    </div>
+                    
+                    <div className="info-item">
+                      <div className="info-label">Notifications</div>
+                      <div className="notifications-row">
+                        <div className="notifications-text">
+                          {showNotifications ? 'Notifications are ON' : 'Notifications are OFF'}
                         </div>
-                        
-                        <div className="info-item">
-                          <div className="info-label">Notifications</div>
-                          <div className="notifications-row">
-                            <div className="notifications-text">
-                              {showNotifications ? 'Notifications are ON' : 'Notifications are OFF'}
-                            </div>
-                            <div className="toggle-switch" onClick={toggleNotifications}>
-                              <input 
-                                type="checkbox" 
-                                id="notification-toggle" 
-                                checked={showNotifications} 
-                                onChange={toggleNotifications} 
-                              />
-                              <label htmlFor="notification-toggle"></label>
-                            </div>
-                          </div>
-                          {showNotifications && notificationPermission !== 'granted' && (
-                            <div className="notification-permission mt-2">
-                              <p className="text-warning small mb-2">Browser notifications not enabled.</p>
-                              <button
-                                className="btn btn-sm btn-outline-primary" 
-                                onClick={requestNotificationPermission}
-                              >
-                                Enable Browser Notifications
-                              </button>
-                            </div>
-                          )}
+                        <div className="toggle-switch" onClick={toggleNotifications}>
+                          <input 
+                            type="checkbox" 
+                            id="notification-toggle" 
+                            checked={showNotifications} 
+                            onChange={toggleNotifications} 
+                          />
+                          <label htmlFor="notification-toggle"></label>
                         </div>
-                        
-                        <div className="info-item danger-zone">
-                          <div className="danger-action" onClick={handleBlock}>
-                            <FaShieldAlt className="danger-icon" /> Block {friendName}
-                          </div>
-                          <div className="danger-action" onClick={handleReport}>
-                            <FaFlag className="danger-icon" /> Report {friendName}
-                          </div>
+                      </div>
+                      {showNotifications && notificationPermission !== 'granted' && (
+                        <div className="notification-permission mt-2">
+                          <p className="text-warning small mb-2">Browser notifications not enabled.</p>
+                          <button
+                            className="btn btn-sm btn-outline-primary" 
+                            onClick={requestNotificationPermission}
+                          >
+                            Enable Browser Notifications
+                          </button>
                         </div>
+                      )}
+                    </div>
+                    
+                    <div className="info-item danger-zone">
+                      <div className="danger-action" onClick={handleBlock}>
+                        <FaShieldAlt className="danger-icon" /> Block {friendName}
+                      </div>
+                      <div className="danger-action" onClick={handleReport}>
+                        <FaFlag className="danger-icon" /> Report {friendName}
+                      </div>
+                    </div>
                       </>
                     )}
                   </div>
