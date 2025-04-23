@@ -1,12 +1,12 @@
 import { getResponse } from "../utils/responseHelper";
-import { getAuthToken } from "../utils/authHelper";
+import { getAccessToken } from "../utils/authHelper";
 
 export async function getChats(friendSlug) {
     try {
         console.log(" Fetching chats for friend slug:", friendSlug);
         const response = await getResponse("user/chats/get-chats?friendSlug=" + friendSlug, "GET", null, {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${getAuthToken()}`,
+            "Authorization": `Bearer ${getAccessToken()}`,
         });
         const data = await response.json();
         console.log(" Raw API response in chatService:", data);
@@ -28,7 +28,7 @@ export async function sendMessages(friendSlug, content) {
         console.log(" Sending message to friend slug:", friendSlug, "Content:", content);
         const response = await getResponse("user/chats/send-message", "POST", JSON.stringify({ friendSlug, content }), {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${getAuthToken()}`,
+            "Authorization": `Bearer ${getAccessToken()}`,
         });
         const data = await response.json();
         console.log(" Message sent response:", data);

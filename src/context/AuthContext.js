@@ -1,11 +1,11 @@
 import React, { createContext, useState, useContext } from "react";
 import { register, login, sendOtp, verifyOtp, me, logout } from "../services/authService"; // Import the login function
-import { setEmail, getEmail, removeEmail, setAuthToken, getAuthToken, removeAuthToken, setUser, removeUser, setRefreshToken, removeRefreshToken } from "../utils/authHelper";
+import { setEmail, getEmail, removeEmail, setAccessToken, getAccessToken, removeAccessToken, setUser, removeUser, setRefreshToken, removeRefreshToken } from "../utils/authHelper";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(!!getAuthToken());
+  const [isLoggedIn, setIsLoggedIn] = useState(!!getAccessToken());
 
   const handleRegister = async (name, email, password) => {
     try {
@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
       console.log("OTP Verified:", data);
 
       setIsLoggedIn(true);
-      setAuthToken(data?.data?.accessToken);
+      setAccessToken(data?.data?.accessToken);
       setRefreshToken(data?.data?.refreshToken);
       setUser(data?.data);
     } catch (error) {
@@ -66,7 +66,7 @@ export const AuthProvider = ({ children }) => {
       const data = await logout();
       console.log("Logged out:", data);
       setIsLoggedIn(false);
-      removeAuthToken();
+      removeAccessToken();
       removeRefreshToken();
       removeEmail();
       removeUser();

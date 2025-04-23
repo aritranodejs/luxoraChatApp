@@ -10,16 +10,16 @@ export const removeEmail = () => {
     localStorage.removeItem("email");
 };
 
-export const setAuthToken = (token) => {
-    localStorage.setItem("authToken", token);
+export const setAccessToken = (token) => {
+    localStorage.setItem("accessToken", token);
 };
 
-export const getAuthToken = () => {
-    return localStorage.getItem("authToken");
+export const getAccessToken = () => {
+    return localStorage.getItem("accessToken");
 };
 
-export const removeAuthToken = () => {
-    localStorage.removeItem("authToken");
+export const removeAccessToken = () => {
+    localStorage.removeItem("accessToken");
 };
 
 export const setRefreshToken = (token) => {

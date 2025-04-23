@@ -1,4 +1,4 @@
-import { getAuthToken } from "../utils/authHelper";
+import { getAccessToken } from "../utils/authHelper";
 import { getResponse } from "../utils/responseHelper";
 
 export const updateUserOnlineStatus = async (userId, isOnline) => {
@@ -19,7 +19,7 @@ export const updateUserOnlineStatus = async (userId, isOnline) => {
             JSON.stringify({ userId, isOnline }), 
             {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${getAuthToken()}`,
+                "Authorization": `Bearer ${getAccessToken()}`,
             },
             controller.signal
         );

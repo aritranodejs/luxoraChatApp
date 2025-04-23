@@ -1,4 +1,4 @@
-import { setAuthToken, removeAuthToken, getRefreshToken, removeRefreshToken } from "./authHelper";
+import { setAccessToken, removeAccessToken, getRefreshToken, removeRefreshToken } from "./authHelper";
 
 // Get API_URL from env or use fallback
 const API_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -19,7 +19,7 @@ const processQueue = (error, token = null) => {
     failedQueue = [];
 };
 
-export async function refreshAuthToken() {
+export async function refreshAccessToken() {
     try {
         // Call the refresh token endpoint
         const response = await fetch(`${API_URL}/auth/refresh`, {
@@ -40,12 +40,12 @@ export async function refreshAuthToken() {
         const data = await response.json();
         
         // Update tokens in storage
-        setAuthToken(data.data.accessToken);
+        setAccessToken(data.data.accessToken);
         
         return data.data.accessToken;
     } catch (error) {
         // Clear auth data on refresh failure
-        removeAuthToken();
+        removeAccessToken();
         removeRefreshToken();
         throw error;
     }
@@ -82,7 +82,7 @@ export async function getResponse(endpoint, method, body, headers, signal) {
             if (!isRefreshing) {
                 isRefreshing = true;
                 try {
-                    const newToken = await refreshAuthToken();
+                    const newToken = await refreshAccessToken();
                     isRefreshing = false;
                     
                     // Resolve all queued requests with the new token
