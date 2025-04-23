@@ -2216,9 +2216,34 @@ const ChatWindow = ({ friendSlug }) => {
       const placeholder = `__CODE_BLOCK_${index}__`;
       const escapedCode = escapeHtml(block.code);
       
-      // Add a unique ID to the code block for easier selection
-      const blockId = `code-block-${Date.now()}-${index}`;
-      const codeHtml = `<pre data-language="${block.language}" id="${blockId}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" onclick="window.copyCodeBlock('${blockId}')">Copy</button></pre>`;
+      // Create a simpler implementation with direct onclick handler
+      const codeHtml = `<pre data-language="${block.language}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" onclick="
+        const code = this.previousElementSibling.innerText;
+        
+        // Copy to clipboard
+        const textarea = document.createElement('textarea');
+        textarea.value = code;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        
+        try {
+          document.execCommand('copy');
+          this.innerText = 'Copied!';
+          this.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
+        } catch (err) {
+          this.innerText = 'Failed';
+          this.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
+        }
+        
+        document.body.removeChild(textarea);
+        
+        setTimeout(() => {
+          this.innerText = 'Copy';
+          this.style.backgroundColor = '';
+        }, 2000);
+      ">Copy</button></pre>`;
       
       formattedMessage = formattedMessage.replace(placeholder, codeHtml);
     });
@@ -2229,7 +2254,7 @@ const ChatWindow = ({ friendSlug }) => {
   // Add helper functions for code formatting
   const detectLanguage = (code) => {
     // Simple language detection based on keywords and syntax
-    if (code.includes('def ') || code.includes('import ') && code.includes(':')) return 'python';
+    if ((code.includes('def ') || code.includes('import ')) && code.includes(':')) return 'python';
     if (code.includes('function') || code.includes('const ') || code.includes('let ') || code.includes('var ')) return 'javascript';
     if (code.includes('class ') && code.includes('{')) return 'java';
     if (code.includes('<html') || code.includes('<!DOCTYPE')) return 'html';
