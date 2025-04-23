@@ -2733,3 +2733,25 @@ body:not(.dark-mode) .message-bubble pre::before {
 
 /* Apply the ai-message class to received messages when the sender is an AI */
 /* This class should be added via JS to the message bubble when the sender is an AI */
+
+/* Add a new style for the mobile-only header */
+.chat-header.p-2.d-flex.justify-content-between.align-items-center.bg-white.text-white.w-100 {
+  display: none !important; /* Hide on desktop by default */
+}
+
+/* Show the mobile-only header only on mobile devices */
+@media (max-width: 768px) {
+  .chat-header.p-2.d-flex.justify-content-between.align-items-center.bg-white.text-white.w-100 {
+    display: flex !important; /* Show on mobile */
+  }
+  
+  .menu-button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+  }
+}
