@@ -2177,13 +2177,11 @@ const ChatWindow = ({ friendSlug }) => {
   const formatMessageWithCodeBlocks = (message) => {
     if (!message) return '';
     
-    // Detect code blocks with triple backticks
+    // First handle code blocks with triple backticks
     const codeBlockRegex = /```([a-zA-Z]*)\n([\s\S]*?)```/g;
     
     // Check if the message contains code blocks
-    if (!codeBlockRegex.test(message)) {
-      return message; // Return as-is if no code blocks found
-    }
+    const hasCodeBlocks = codeBlockRegex.test(message);
     
     // Reset regex since we used test()
     codeBlockRegex.lastIndex = 0;
@@ -2193,60 +2191,81 @@ const ChatWindow = ({ friendSlug }) => {
     const blocks = [];
     
     // Find all code blocks
-    while ((match = codeBlockRegex.exec(message)) !== null) {
-      const fullMatch = match[0];
-      let language = match[1].trim().toLowerCase();
-      const code = match[2];
-      
-      // If language isn't specified, detect it
-      if (!language) {
-        language = detectLanguage(code);
-      }
-      
-      // Create a placeholder to replace the code block
-      const placeholder = `__CODE_BLOCK_${blocks.length}__`;
-      blocks.push({ language, code });
-      
-      // Replace the code block with the placeholder
-      formattedMessage = formattedMessage.replace(fullMatch, placeholder);
-    }
-    
-    // Replace placeholders with actual HTML
-    blocks.forEach((block, index) => {
-      const placeholder = `__CODE_BLOCK_${index}__`;
-      const escapedCode = escapeHtml(block.code);
-      
-      // Create a simpler implementation with direct onclick handler
-      const codeHtml = `<pre data-language="${block.language}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" onclick="
-        const code = this.previousElementSibling.innerText;
+    if (hasCodeBlocks) {
+      while ((match = codeBlockRegex.exec(message)) !== null) {
+        const fullMatch = match[0];
+        let language = match[1].trim().toLowerCase();
+        const code = match[2];
         
-        // Copy to clipboard
-        const textarea = document.createElement('textarea');
-        textarea.value = code;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        
-        try {
-          document.execCommand('copy');
-          this.innerText = 'Copied!';
-          this.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
-        } catch (err) {
-          this.innerText = 'Failed';
-          this.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
+        // If language isn't specified, detect it
+        if (!language) {
+          language = detectLanguage(code);
         }
         
-        document.body.removeChild(textarea);
+        // Create a placeholder to replace the code block
+        const placeholder = `__CODE_BLOCK_${blocks.length}__`;
+        blocks.push({ language, code });
         
-        setTimeout(() => {
-          this.innerText = 'Copy';
-          this.style.backgroundColor = '';
-        }, 2000);
-      ">Copy</button></pre>`;
+        // Replace the code block with the placeholder
+        formattedMessage = formattedMessage.replace(fullMatch, placeholder);
+      }
       
-      formattedMessage = formattedMessage.replace(placeholder, codeHtml);
-    });
+      // Replace placeholders with actual HTML
+      blocks.forEach((block, index) => {
+        const placeholder = `__CODE_BLOCK_${index}__`;
+        const escapedCode = escapeHtml(block.code);
+        
+        // Create a simpler implementation with direct onclick handler
+        const codeHtml = `<pre data-language="${block.language}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" onclick="
+          const code = this.previousElementSibling.innerText;
+          
+          // Copy to clipboard
+          const textarea = document.createElement('textarea');
+          textarea.value = code;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          
+          try {
+            document.execCommand('copy');
+            this.innerText = 'Copied!';
+            this.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
+          } catch (err) {
+            this.innerText = 'Failed';
+            this.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
+          }
+          
+          document.body.removeChild(textarea);
+          
+          setTimeout(() => {
+            this.innerText = 'Copy';
+            this.style.backgroundColor = '';
+          }, 2000);
+        ">Copy</button></pre>`;
+        
+        formattedMessage = formattedMessage.replace(placeholder, codeHtml);
+      });
+    }
+    
+    // Process asterisk formatting for premium look
+    // Handle bold (***text***) with premium styling
+    formattedMessage = formattedMessage.replace(
+      /\*\*\*([^*]+)\*\*\*/g, 
+      '<span class="premium-text">$1</span>'
+    );
+    
+    // Handle bold+italic (**text**) with emphasis
+    formattedMessage = formattedMessage.replace(
+      /\*\*([^*]+)\*\*/g, 
+      '<strong>$1</strong>'
+    );
+    
+    // Handle italic (*text*) with subtle emphasis
+    formattedMessage = formattedMessage.replace(
+      /(?<!\*)\*([^*]+)\*(?!\*)/g, 
+      '<em>$1</em>'
+    );
     
     return formattedMessage;
   };
