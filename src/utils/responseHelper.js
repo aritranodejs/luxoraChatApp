@@ -1,4 +1,4 @@
-import { setAccessToken, removeAccessToken, getRefreshToken, removeRefreshToken } from "./authHelper";
+import { setAccessToken, setRefreshToken, removeAccessToken, getRefreshToken, removeRefreshToken, removeEmail, removeUser } from "./authHelper";
 
 // Get API_URL from env or use fallback
 const API_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -41,12 +41,16 @@ export async function refreshAccessToken() {
         
         // Update tokens in storage
         setAccessToken(data.data.accessToken);
+        setRefreshToken(data.data.refreshToken);
         
         return data.data.accessToken;
     } catch (error) {
         // Clear auth data on refresh failure
         removeAccessToken();
         removeRefreshToken();
+        removeEmail();
+        removeUser();
+        window.location.href = '/login';
         throw error;
     }
 }
