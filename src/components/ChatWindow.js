@@ -76,6 +76,13 @@ const LinkPreview = ({ url, preview, isLoading }) => {
   );
 };
 
+// Add a shared URL regex pattern at the component level
+// This regex matches URLs more accurately and handles special cases
+// Negative lookahead and lookbehind to avoid URLs in HTML tags
+// Handles URLs with @ prefix, URL encoding, and other special cases
+// Also handles domain names without http:// or https:// prefixes
+const URL_REGEX_PATTERN = /(?<!<a[^>]*>|="|=')(?<!["'])(@?(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*))(?![^<]*<\/a>|["'])/gi;
+
 const ChatWindow = ({ friendSlug }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -2060,8 +2067,21 @@ const ChatWindow = ({ friendSlug }) => {
 
   // Add this function to extract URLs from message text
   const extractUrls = (text) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.match(urlRegex) || [];
+    if (!text) return [];
+    
+    // Create a one-time regex pattern that also matches domain names without protocols
+    const urlRegex = /(?:https?:\/\/)?(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
+    
+    const matches = text.match(urlRegex) || [];
+    
+    // Filter out false positives and add protocol where needed
+    return matches.map(url => {
+      // Add protocol if missing
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return 'https://' + url;
+      }
+      return url;
+    });
   };
 
   // Function to fetch metadata for a URL
@@ -2192,61 +2212,125 @@ const ChatWindow = ({ friendSlug }) => {
     
     // Find all code blocks
     if (hasCodeBlocks) {
-      while ((match = codeBlockRegex.exec(message)) !== null) {
-        const fullMatch = match[0];
-        let language = match[1].trim().toLowerCase();
-        const code = match[2];
-        
-        // If language isn't specified, detect it
-        if (!language) {
-          language = detectLanguage(code);
-        }
-        
-        // Create a placeholder to replace the code block
-        const placeholder = `__CODE_BLOCK_${blocks.length}__`;
-        blocks.push({ language, code });
-        
-        // Replace the code block with the placeholder
-        formattedMessage = formattedMessage.replace(fullMatch, placeholder);
+    while ((match = codeBlockRegex.exec(message)) !== null) {
+      const fullMatch = match[0];
+      let language = match[1].trim().toLowerCase();
+      const code = match[2];
+      
+      // If language isn't specified, detect it
+      if (!language) {
+        language = detectLanguage(code);
       }
       
-      // Replace placeholders with actual HTML
-      blocks.forEach((block, index) => {
-        const placeholder = `__CODE_BLOCK_${index}__`;
-        const escapedCode = escapeHtml(block.code);
-        
-        // Create a simpler implementation with direct onclick handler
-        const codeHtml = `<pre data-language="${block.language}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" onclick="
-          const code = this.previousElementSibling.innerText;
-          
-          // Copy to clipboard
-          const textarea = document.createElement('textarea');
-          textarea.value = code;
-          textarea.style.position = 'fixed';
-          textarea.style.opacity = '0';
-          document.body.appendChild(textarea);
-          textarea.select();
-          
-          try {
-            document.execCommand('copy');
-            this.innerText = 'Copied!';
-            this.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
-          } catch (err) {
-            this.innerText = 'Failed';
-            this.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
-          }
-          
-          document.body.removeChild(textarea);
-          
-          setTimeout(() => {
-            this.innerText = 'Copy';
-            this.style.backgroundColor = '';
-          }, 2000);
-        ">Copy</button></pre>`;
-        
-        formattedMessage = formattedMessage.replace(placeholder, codeHtml);
-      });
+      // Create a placeholder to replace the code block
+      const placeholder = `__CODE_BLOCK_${blocks.length}__`;
+      blocks.push({ language, code });
+      
+      // Replace the code block with the placeholder
+      formattedMessage = formattedMessage.replace(fullMatch, placeholder);
     }
+    
+    // Replace placeholders with actual HTML
+    blocks.forEach((block, index) => {
+      const placeholder = `__CODE_BLOCK_${index}__`;
+      const escapedCode = escapeHtml(block.code);
+      
+      // Create a simpler implementation with direct onclick handler
+      const codeHtml = `<pre data-language="${block.language}"><code class="language-${block.language}">${escapedCode}</code><button class="code-copy-btn" onclick="
+        const code = this.previousElementSibling.innerText;
+        
+        // Copy to clipboard
+        const textarea = document.createElement('textarea');
+        textarea.value = code;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        
+        try {
+          document.execCommand('copy');
+          this.innerText = 'Copied!';
+          this.style.backgroundColor = 'rgba(40, 167, 69, 0.8)';
+        } catch (err) {
+          this.innerText = 'Failed';
+          this.style.backgroundColor = 'rgba(220, 53, 69, 0.8)';
+        }
+        
+        document.body.removeChild(textarea);
+        
+        setTimeout(() => {
+          this.innerText = 'Copy';
+          this.style.backgroundColor = '';
+        }, 2000);
+      ">Copy</button></pre>`;
+      
+      formattedMessage = formattedMessage.replace(placeholder, codeHtml);
+    });
+    }
+    
+    // Process URLs - convert them to premium-styled clickable links
+    // Use the shared URL regex pattern
+    formattedMessage = formattedMessage.replace(URL_REGEX_PATTERN, (url) => {
+      // First, handle @ symbols at the beginning of URLs
+      let finalUrl = url.replace(/^@/, '');
+      
+      // Handle URL-encoded sequences
+      try {
+        finalUrl = decodeURIComponent(finalUrl.replace(/%(?![0-9A-Fa-f]{2})/g, '%25'));
+      } catch (e) {
+        // If decoding fails, use the original
+        console.log("URL decoding error:", e);
+      }
+      
+      // Add protocol if missing
+      if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+        finalUrl = 'https://' + finalUrl;
+      }
+      
+      // Clean up URL if it has markdown brackets, quotes, or other formatting
+      finalUrl = finalUrl.replace(/[\[\]"']/g, '');
+      
+      // Special case for URLs followed by markdown-style links [text](url)
+      if (finalUrl.includes('](')) {
+        // Extract URL from markdown format with missing closing parenthesis
+        const markdownMatch = finalUrl.match(/\[([^\]]+)\]\(([^)]*)/);
+        if (markdownMatch && markdownMatch[2]) {
+          finalUrl = markdownMatch[2].trim();
+          // Add protocol if missing after extraction
+          if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+            finalUrl = 'https://' + finalUrl;
+          }
+        }
+      }
+      
+      // Handle URLs with parentheses correctly
+      if (finalUrl.includes('(') && finalUrl.includes(')')) {
+        const match = finalUrl.match(/\(([^)]+)\)/);
+        if (match && match[1]) {
+          finalUrl = match[1];
+          // Add protocol if missing after extraction
+          if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+            finalUrl = 'https://' + finalUrl;
+          }
+        }
+      }
+      
+      // Clean up trailing punctuation
+      finalUrl = finalUrl.replace(/[.,;:!?)]$/, '');
+      
+      // Extract domain for clean display
+      let displayText = '';
+      try {
+        const urlObj = new URL(finalUrl);
+        displayText = urlObj.hostname.replace(/^www\./, '');
+      } catch (e) {
+        const parts = finalUrl.split('/');
+        displayText = parts.length > 2 ? parts[2] : finalUrl.replace(/^https?:\/\//i, '');
+      }
+      
+      // Use a simple link format that works reliably
+      return `<a href="${finalUrl}">${displayText}</a>`;
+    });
     
     // Process asterisk formatting for premium look
     // Handle bold (***text***) with premium styling
@@ -2265,6 +2349,62 @@ const ChatWindow = ({ friendSlug }) => {
     formattedMessage = formattedMessage.replace(
       /(?<!\*)\*([^*]+)\*(?!\*)/g, 
       '<em>$1</em>'
+    );
+    
+    // Handle markdown-style links [text](url) - even with unclosed parentheses
+    formattedMessage = formattedMessage.replace(
+      /\[([^\]]+)\]\(([^)]*)/g,
+      (match, text, url) => {
+        // Ensure URL has a protocol prefix and is clean
+        let cleanUrl = url.trim();
+        
+        // Handle case where the URL might end with a closing parenthesis
+        if (cleanUrl.endsWith(')')) {
+          cleanUrl = cleanUrl.slice(0, -1);
+        }
+        
+        if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+          cleanUrl = 'https://' + cleanUrl;
+        }
+        
+        // Simple link format that matches WhatsApp/Teams style
+        return `<a href="${cleanUrl}">${text}</a>`;
+      }
+    );
+    
+    // Direct fix for specific URL cases with unclosed parentheses
+    // These are URLs that end with a closing parenthesis but are missing the matching one
+    const urlWithUnclosedParenPattern = /(https?:\/\/[^\s]+)(?:\))+/g;
+    formattedMessage = formattedMessage.replace(
+      urlWithUnclosedParenPattern,
+      (match, url) => {
+        // Make sure the parentheses are balanced
+        let balanced = 0;
+        for (let i = 0; i < url.length; i++) {
+          if (url[i] === '(') balanced++;
+          else if (url[i] === ')') balanced--;
+        }
+        
+        // If we have more closing than opening parentheses, fix the URL
+        if (balanced < 0) {
+          const cleanUrl = url.replace(/\)+$/, '');
+          return `<a href="${cleanUrl}">${cleanUrl.replace(/^https?:\/\//i, '')}</a>`;
+        }
+        
+        return match;
+      }
+    );
+    
+    // Fix for plain URLs like google.com)
+    formattedMessage = formattedMessage.replace(
+      /\b([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z0-9]{2,}(?:[-a-zA-Z0-9\/]*))\)/g,
+      (match, domain) => {
+        // Ensure it's a complete domain without protocol
+        if (domain.match(/^[^.]+\.[^.]+/)) {
+          return `<a href="https://${domain}">${domain}</a>)`;
+        }
+        return match;
+      }
     );
     
     return formattedMessage;

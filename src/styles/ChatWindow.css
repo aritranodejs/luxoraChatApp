@@ -2824,3 +2824,236 @@ body.dark-mode .premium-text::after {
     font-size: 0.95em;
   }
 }
+
+/* Premium link styling */
+.premium-link {
+  color: #0d6efd;
+  text-decoration: none;
+  position: relative;
+  font-weight: 500;
+  padding: 2px 6px;
+  margin: 0 1px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.3s ease;
+  background: rgba(13, 110, 253, 0.08);
+  border-left: 2px solid rgba(13, 110, 253, 0.3);
+  transform: translateY(0);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.premium-link:hover {
+  background: rgba(13, 110, 253, 0.15);
+  color: #0a58ca;
+  transform: translateY(-1px);
+  border-left: 2px solid rgba(13, 110, 253, 0.7);
+}
+
+.premium-link:active {
+  transform: translateY(0px);
+}
+
+.premium-link .external-link-icon {
+  opacity: 0.7;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.premium-link:hover .external-link-icon {
+  opacity: 1;
+  transform: translateX(1px) translateY(-1px);
+}
+
+/* Premium link in AI messages */
+.message-bubble.received.ai-message .premium-link {
+  background: rgba(183, 33, 255, 0.08);
+  color: #B721FF;
+}
+
+.message-bubble.received.ai-message .premium-link:hover {
+  background: rgba(183, 33, 255, 0.15);
+  color: #9100fd;
+}
+
+/* Premium link in regular received messages */
+.message-bubble.received .premium-link {
+  background: rgba(255, 255, 255, 0.1);
+  color: #58a6ff;
+}
+
+.message-bubble.received .premium-link:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #79baff;
+}
+
+/* Premium link in sent messages */
+.message-bubble.sent .premium-link {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.message-bubble.sent .premium-link:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Add custom tooltip on hover to show the full URL */
+.premium-link:after {
+  content: attr(data-domain);
+  position: absolute;
+  bottom: -25px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.8);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  z-index: 100;
+}
+
+.premium-link:hover:after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+
+/* Dark mode adjustments */
+body.dark-mode .premium-link {
+  color: #58a6ff;
+}
+
+body.dark-mode .message-bubble.received.ai-message .premium-link {
+  color: #FF5ACD;
+  background: rgba(255, 90, 205, 0.08);
+}
+
+body.dark-mode .message-bubble.received.ai-message .premium-link:hover {
+  background: rgba(255, 90, 205, 0.15);
+  color: #ff78d4;
+}
+
+/* Responsive styling */
+@media (max-width: 576px) {
+  .premium-link {
+    font-size: 13px;
+    padding: 1px 3px;
+  }
+  
+  .premium-link .external-link-icon {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+/* Markdown link styling */
+.premium-link.markdown-link {
+  background: rgba(13, 110, 253, 0.12);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-weight: 600;
+  transition: all 0.25s ease;
+}
+
+.premium-link.markdown-link:hover {
+  background: rgba(13, 110, 253, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 3px 8px rgba(13, 110, 253, 0.2);
+}
+
+/* Enhanced tooltip for markdown links */
+.premium-link.markdown-link:after {
+  content: attr(data-url);
+  width: auto;
+  max-width: 250px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+
+/* Special styling for markdown links in AI messages */
+.message-bubble.received.ai-message .premium-link.markdown-link {
+  background: rgba(183, 33, 255, 0.12);
+  border-left: 2px solid #B721FF;
+}
+
+.message-bubble.received.ai-message .premium-link.markdown-link:hover {
+  background: rgba(183, 33, 255, 0.2);
+  box-shadow: 0 3px 8px rgba(183, 33, 255, 0.2);
+}
+
+/* Dark mode support for markdown links */
+body.dark-mode .premium-link.markdown-link {
+  background: rgba(88, 166, 255, 0.12);
+}
+
+body.dark-mode .premium-link.markdown-link:hover {
+  background: rgba(88, 166, 255, 0.2);
+}
+
+body.dark-mode .message-bubble.received.ai-message .premium-link.markdown-link {
+  background: rgba(255, 90, 205, 0.12);
+  border-left: 2px solid #FF5ACD;
+}
+
+body.dark-mode .message-bubble.received.ai-message .premium-link.markdown-link:hover {
+  background: rgba(255, 90, 205, 0.2);
+}
+
+/* WhatsApp/Teams style links */
+.message-bubble a {
+  color: #58a6ff;
+  text-decoration: none;
+  font-weight: 500;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.message-bubble a:hover {
+  text-decoration: underline;
+}
+
+/* Custom styles for links in different message types */
+.message-bubble.sent a {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.message-bubble.received a {
+  color: #58a6ff;
+}
+
+.message-bubble.received.ai-message a {
+  color: #FF5ACD;
+}
+
+/* Make sure links don't break out of message bubbles */
+.message-bubble a {
+  max-width: 100%;
+  word-break: break-word;
+}
+
+/* Remove premium link styling that's causing rendering issues */
+.premium-link, .premium-link.markdown-link {
+  background: transparent;
+  border-left: none;
+  padding: 0;
+  margin: 0;
+  gap: 0;
+}
+
+.premium-link:hover, .premium-link.markdown-link:hover {
+  background: transparent;
+  border-left: none;
+  transform: none;
+  box-shadow: none;
+}
