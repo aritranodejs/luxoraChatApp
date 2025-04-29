@@ -15,6 +15,11 @@ import { formatLastSeen } from "../utils/formatOnlineStatus";
 const LinkPreview = ({ url, preview, isLoading }) => {
   const [collapsed, setCollapsed] = useState(false);
   
+  // Helper function to safely extract domain from URL
+  const getDomain = (url) => {
+    return url.replace(/^https?:\/\//, '').split('/')[0].replace('www.', '');
+  };
+  
   if (isLoading) {
     return (
       <div className="link-preview-loading">
@@ -30,7 +35,7 @@ const LinkPreview = ({ url, preview, isLoading }) => {
     return collapsed ? (
       <div className="link-preview-collapsed" onClick={() => setCollapsed(false)}>
         <FaExternalLinkAlt size={12} className="me-1" />
-        <span className="preview-site">{new URL(url).hostname}</span>
+        <span className="preview-site">{getDomain(url)}</span>
       </div>
     ) : null;
   }
@@ -2097,49 +2102,30 @@ const ChatWindow = ({ friendSlug }) => {
     }));
 
     try {
-      // Using Open Graph meta tags proxy service
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-      const response = await fetch(proxyUrl);
-      const data = await response.json();
+      // Use our own server instead of allorigins to avoid CSP issues
+      const proxyUrl = `${url.startsWith('http') ? url : 'https://' + url}`;
       
-      if (!data || !data.contents) {
-        throw new Error('Failed to fetch URL metadata');
-      }
-
-      // Parse the HTML to extract Open Graph metadata
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(data.contents, 'text/html');
+      // Create a minimal preview without making external requests
+      const domain = url.replace(/^https?:\/\//, '').split('/')[0];
       
-      // Extract metadata
-      const title = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || 
-                    doc.querySelector('title')?.textContent || 
-                    url;
+      // Extract siteName and fallback to domain
+      const siteName = domain.replace('www.', '');
       
-      const description = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || 
-                          doc.querySelector('meta[name="description"]')?.getAttribute('content') || 
-                          '';
-      
-      const image = doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || 
-                    doc.querySelector('meta[property="og:image:url"]')?.getAttribute('content') || 
-                    '';
-      
-      const siteName = doc.querySelector('meta[property="og:site_name"]')?.getAttribute('content') || 
-                       new URL(url).hostname.replace('www.', '');
-
       // Store the preview data
       setLinkPreviews(prev => ({
         ...prev,
         [url]: {
-          title,
-          description,
-          image,
+          title: url,
+          description: `Link to ${domain}`,
+          image: '',
           siteName,
-          url
+          url: proxyUrl
         }
       }));
 
-      } catch (error) {
-      console.error("Error fetching link preview:", error);
+    } catch (error) {
+      console.error("Error creating link preview:", error);
+      
       // Store a minimal preview
       setLinkPreviews(prev => ({
         ...prev,
@@ -2147,7 +2133,7 @@ const ChatWindow = ({ friendSlug }) => {
           title: url,
           description: '',
           image: '',
-          siteName: new URL(url).hostname.replace('www.', ''),
+          siteName: url.replace(/^https?:\/\//, '').split('/')[0].replace('www.', ''),
           url,
           error: true
         }
@@ -2321,8 +2307,8 @@ const ChatWindow = ({ friendSlug }) => {
       // Extract domain for clean display
       let displayText = '';
       try {
-        const urlObj = new URL(finalUrl);
-        displayText = urlObj.hostname.replace(/^www\./, '');
+        // Extract domain without using URL constructor
+        displayText = finalUrl.replace(/^https?:\/\//, '').split('/')[0].replace(/^www\./, '');
       } catch (e) {
         const parts = finalUrl.split('/');
         displayText = parts.length > 2 ? parts[2] : finalUrl.replace(/^https?:\/\//i, '');
@@ -2734,8 +2720,17 @@ const ChatWindow = ({ friendSlug }) => {
                       <div className="info-value media-preview">
                         {sharedMedia.map((media, index) => (
                           <div className="media-item" key={index}>
-                            <img src={media.url} alt="Shared media" />
-                            <div className="media-date">{media.date}</div>
+                            {media && media.url && (
+                              <img 
+                                src={media.url} 
+                                alt="Shared media" 
+                                onError={(e) => {
+                                  console.warn("Failed to load image:", media.url);
+                                  e.target.style.display = 'none';
+                                }}
+                              />
+                            )}
+                            <div className="media-date">{media?.date || ''}</div>
                           </div>
                         ))}
                       </div>
@@ -2889,11 +2884,11 @@ const ChatWindow = ({ friendSlug }) => {
                       return (
                         <div key={index} className={`d-flex mb-2 ${isSentByMe ? "justify-content-end" : "justify-content-start"}`}>
                           <div style={{maxWidth: "70%"}}>
-                            <div className={`message-bubble ${isSentByMe ? "sent" : "received"}`} id={`message-${msg.id || index}`}>
+                            <div className={`message-bubble ${isSentByMe ? "sent" : "received"} ${!isSentByMe && isAI ? "ai-message" : ""}`} id={`message-${msg.id || index}`}>
                               {/* Display message text */}
                               <div 
                                 className={`message-content ${isEmojiOnlyMessage(messageContent) ? 'emoji-message' : ''}`}
-                                dangerouslySetInnerHTML={{ __html: formatMessageWithCodeBlocks(messageContent) }}
+                                dangerouslySetInnerHTML={{ __html: formatMessageWithCodeBlocks(messageContent || '') }}
                               ></div>
                               {msg.edited && <span className="edited-indicator"> (edited)</span>}
                               
