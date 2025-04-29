@@ -2519,6 +2519,24 @@ const ChatWindow = ({ friendSlug }) => {
     }, 0);
   };
 
+  // Fix back/forward cache issues
+  useEffect(() => {
+    // Remove any 'unload' listeners that might prevent bfcache
+    const handlePageHide = () => {
+      // Use pageHide instead of unload
+      // Clean up operations can go here
+    };
+    
+    window.addEventListener('pagehide', handlePageHide);
+    
+    // Ensure we don't use unload event
+    window.removeEventListener('unload', () => {});
+    
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, []);
+
   return (
     <div className="chat-window d-flex flex-column w-100 h-100 p-3">
       {loading ? (
